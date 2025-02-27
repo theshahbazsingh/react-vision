@@ -1,0 +1,28 @@
+{
+  "name": "react-vision",
+  "version": "1.0.0",
+  "description": "A lightweight React camera component with tap-to-focus",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.2",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "rollup": "^4.34.8",
+    "rollup-plugin-dts": "^6.1.1",
+    "typescript": "^5.7.3"
+  }
+}
