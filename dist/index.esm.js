@@ -85,12 +85,10 @@ var VisionScanner = function (_a) {
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-                        onError === null || onError === void 0 ? void 0 : onError("Camera not supported on this device.");
-                        setCameraCount(0);
-                        return [2 /*return*/];
-                    }
-                    _a.label = 1;
+                    if (!(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices)) return [3 /*break*/, 1];
+                    onError === null || onError === void 0 ? void 0 : onError("Camera not supported on this device.");
+                    setCameraCount(0);
+                    return [2 /*return*/];
                 case 1:
                     _a.trys.push([1, 3, , 4]);
                     return [4 /*yield*/, navigator.mediaDevices.enumerateDevices()];
@@ -116,13 +114,11 @@ var VisionScanner = function (_a) {
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        errorMsg = "Camera not supported on this device.";
-                        onError === null || onError === void 0 ? void 0 : onError(errorMsg);
-                        console.error(errorMsg);
-                        return [2 /*return*/];
-                    }
-                    _a.label = 1;
+                    if (!(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) return [3 /*break*/, 1];
+                    errorMsg = "Camera not supported on this device.";
+                    onError === null || onError === void 0 ? void 0 : onError(errorMsg);
+                    console.error(errorMsg);
+                    return [2 /*return*/];
                 case 1:
                     _a.trys.push([1, 3, , 4]);
                     return [4 /*yield*/, navigator.mediaDevices.getUserMedia({
@@ -144,6 +140,7 @@ var VisionScanner = function (_a) {
                                 console.error(err);
                             });
                             setIsCameraReady(true);
+                            enumerateCameras();
                             var track = newStream_1.getVideoTracks()[0];
                             var capabilities = track.getCapabilities();
                             if (capabilities && "torch" in capabilities) {
@@ -203,13 +200,8 @@ var VisionScanner = function (_a) {
             console.error(errorMsg);
             return;
         }
-        // Flip the context horizontally to mirror the image
-        context.scale(-1, 1);
-        context.translate(-canvas.width, 0);
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         var image = canvas.toDataURL("image/jpeg");
-        // Reset the context transform
-        context.setTransform(1, 0, 0, 1, 0, 0);
         onCapture(image);
     };
     return (jsxs("div", { className: "vision-scanner", children: [jsx("video", { ref: videoRef, playsInline: true, className: "vision-scanner-video" }), jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas" }), jsxs("div", { className: "vision-scanner-controls", children: [jsx("button", { onClick: capture, disabled: !isCameraReady, children: "Scan" }), cameraCount > 1 && (jsx("button", { onClick: switchCamera, children: "Flip Camera" })), hasTorch && (jsx("button", { onClick: toggleTorch, children: torchOn ? "Torch Off" : "Torch On" }))] })] }));

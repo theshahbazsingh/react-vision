@@ -34,16 +34,17 @@ export const VisionScanner = ({
       onError?.("Camera not supported on this device.");
       setCameraCount(0);
       return;
-    }
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === "videoinput");
-      setCameraCount(videoDevices.length);
-      console.log("Camera count:", videoDevices.length);
-    } catch (err: any) {
-      onError?.(`Failed to enumerate devices: ${err.message}`);
-      setCameraCount(0);
-      console.error(err);
+    } else {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === "videoinput");
+        setCameraCount(videoDevices.length);
+        console.log("Camera count:", videoDevices.length);
+      } catch (err: any) {
+        onError?.(`Failed to enumerate devices: ${err.message}`);
+        setCameraCount(0);
+        console.error(err);
+      }
     }
   };
 
@@ -54,38 +55,39 @@ export const VisionScanner = ({
       onError?.(errorMsg);
       console.error(errorMsg);
       return;
-    }
+    } else {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: currentFacingMode,
+            width: { ideal: resolution.width },
+            height: { ideal: resolution.height },
+          },
+        });
+        setStream(newStream);
 
-    try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: resolution.width },
-          height: { ideal: resolution.height },
-        },
-      });
-      setStream(newStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = newStream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().catch(err => {
+              onError?.(`Failed to start video: ${err.message}`);
+              console.error(err);
+            });
+            setIsCameraReady(true);
+            enumerateCameras();
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(err => {
-            onError?.(`Failed to start video: ${err.message}`);
-            console.error(err);
-          });
-          setIsCameraReady(true);
-
-          const track = newStream.getVideoTracks()[0];
-          const capabilities = track.getCapabilities();
-          if (capabilities && "torch" in capabilities) {
-            setHasTorch(true);
-          }
-        };
+            const track = newStream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities();
+            if (capabilities && "torch" in capabilities) {
+              setHasTorch(true);
+            }
+          };
+        }
+      } catch (err: any) {
+        const errorMsg = `Camera error: ${err.message}`;
+        onError?.(errorMsg);
+        console.error(errorMsg);
       }
-    } catch (err: any) {
-      const errorMsg = `Camera error: ${err.message}`;
-      onError?.(errorMsg);
-      console.error(errorMsg);
     }
   };
 
@@ -137,15 +139,9 @@ export const VisionScanner = ({
       return;
     }
 
-    // Flip the context horizontally to mirror the image
-    context.scale(-1, 1);
-    context.translate(-canvas.width, 0);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const image = canvas.toDataURL("image/jpeg");
-
-    // Reset the context transform
-    context.setTransform(1, 0, 0, 1, 0, 0);
-
+    
     onCapture(image);
   };
 
