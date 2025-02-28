@@ -1,49 +1,149 @@
 .vision-scanner {
     position: relative;
     width: 100%;
-    max-width: 480px;
+    max-width: 800px;
     margin: 0 auto;
-    display: inline-block;
-}
-
-.vision-scanner-canvas {
-    display: none;
-}
-
-.vision-scanner-capture {
-    position: absolute;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: #007bff;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.vision-scanner-capture:hover {
-    background-color: #0056b3;
+    background-color: #000;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    /* Set a fixed aspect ratio to prevent layout shifts */
+    aspect-ratio: 4/3;
+    overflow: hidden;
 }
 
 .vision-scanner-video {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
+    /* Hardware acceleration to reduce flickering */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
-.vision-scanner-canvas {
-    display: none;
+.vision-scanner-canvas,
+.vision-scanner-edge-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    /* Hardware acceleration */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.vision-scanner-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 30;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    color: white;
+    font-size: 16px;
 }
 
 .vision-scanner-controls {
-    margin-top: 10px;
+    position: absolute;
+    bottom: 16px;
+    left: 0;
+    right: 0;
     display: flex;
+    justify-content: center;
     gap: 10px;
+    padding: 0 16px;
+    z-index: 20;
+    /* Prevent layout shifts */
+    height: 48px;
 }
 
-.vision-scanner-controls button {
+.vision-scanner-button {
     padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    background-color: rgba(33, 150, 243, 0.9);
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    /* Prevent text selection */
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    /* Hardware acceleration */
+    transform: translateZ(0);
+}
+
+.vision-scanner-button:hover {
+    background-color: #1976d2;
+}
+
+.vision-scanner-button:active {
+    transform: translateY(1px) translateZ(0);
+}
+
+.vision-scanner-button:disabled {
+    background-color: rgba(204, 204, 204, 0.8);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.vision-scanner-button.primary-button {
+    background-color: rgba(76, 175, 80, 0.9);
+}
+
+.vision-scanner-button.primary-button:hover {
+    background-color: #388e3c;
+}
+
+.vision-scanner-button.active-button {
+    background-color: rgba(76, 175, 80, 0.9);
+}
+
+.vision-scanner-status {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    z-index: 20;
+}
+
+.status-message {
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
     font-size: 14px;
 }

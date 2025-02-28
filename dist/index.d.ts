@@ -9,6 +9,15 @@ interface VisionScannerProps {
         height: number;
     };
 }
+interface VisionScannerProps {
+    onCapture: (imageData: string) => void;
+    facingMode?: 'user' | 'environment';
+    onError?: (message: string) => void;
+    resolution?: {
+        width: number;
+        height: number;
+    };
+}
 
 declare const VisionScanner: ({ onCapture, facingMode, onError, resolution, }: VisionScannerProps) => react_jsx_runtime.JSX.Element;
 
