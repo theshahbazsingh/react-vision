@@ -13,7 +13,7 @@ export const VisionScanner = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
-  const [cameraCount, setCameraCount] = useState(0);
+  const [cameraCount, setCameraCount] = useState(0); // Start at 0, update ASAP
   const [currentFacingMode, setCurrentFacingMode] = useState(facingMode);
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -28,83 +28,94 @@ export const VisionScanner = ({
     }
   };
 
+  // Enumerate cameras independently
+  const enumerateCameras = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      onError?.("Camera not supported on this device.");
+      setCameraCount(0);
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === "videoinput");
+      setCameraCount(videoDevices.length);
+      console.log("Camera count:", videoDevices.length);
+    } catch (err: any) {
+      onError?.(`Failed to enumerate devices: ${err.message}`);
+      setCameraCount(0);
+      console.error(err);
+    }
+  };
+
+  // Initialize camera stream
+  const initCamera = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const errorMsg = "Camera not supported on this device.";
+      onError?.(errorMsg);
+      console.error(errorMsg);
+      return;
+    }
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: currentFacingMode,
+          width: { ideal: resolution.width },
+          height: { ideal: resolution.height },
+        },
+      });
+      setStream(newStream);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(err => {
+            onError?.(`Failed to start video: ${err.message}`);
+            console.error(err);
+          });
+          setIsCameraReady(true);
+
+          const track = newStream.getVideoTracks()[0];
+          const capabilities = track.getCapabilities();
+          if (capabilities && "torch" in capabilities) {
+            setHasTorch(true);
+          }
+        };
+      }
+    } catch (err: any) {
+      const errorMsg = `Camera error: ${err.message}`;
+      onError?.(errorMsg);
+      console.error(errorMsg);
+    }
+  };
+
+  // Run enumerateCameras on initial mount
   useEffect(() => {
-    const initCamera = async () => {
-      // Verify camera API support
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const errorMsg = "Camera not supported on this device.";
-        onError?.(errorMsg);
-        console.error(errorMsg);
-        return;
-      }
+    enumerateCameras();
+  }, [onError]); // No dependencies that change often, runs once on mount
 
-      try {
-        // Count available cameras
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === "videoinput");
-        setCameraCount(videoDevices.length);
-
-        // Request camera stream
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: currentFacingMode,
-            width: { ideal: resolution.width },
-            height: { ideal: resolution.height },
-          },
-        });
-        setStream(newStream);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = newStream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().catch(err => {
-              onError?.(`Failed to start video: ${err.message}`);
-              console.error(err);
-            });
-            setIsCameraReady(true);
-
-            // Check for torch support
-            const track = newStream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
-            if (capabilities && "torch" in capabilities) {
-              setHasTorch(true);
-            }
-          };
-        }
-      } catch (err: any) {
-        const errorMsg = `Camera error: ${err.message}`;
-        onError?.(errorMsg);
-        console.error(errorMsg);
-      }
-    };
-
+  // Run initCamera on mount and facingMode/resolution changes
+  useEffect(() => {
     initCamera();
-
-    // Cleanup on unmount or facingMode change
     return () => stopStream();
   }, [currentFacingMode, resolution.width, resolution.height, onError]);
 
-  // Switch between front and back cameras
   const switchCamera = () => {
     stopStream();
     setCurrentFacingMode(prev => (prev === "environment" ? "user" : "environment"));
   };
 
-  // Toggle torch on/off
   const toggleTorch = () => {
     if (hasTorch && stream) {
       const track = stream.getVideoTracks()[0];
       const newTorchState = !torchOn;
-      track.applyConstraints({ advanced: [{ torch: newTorchState } as any] })
+      track
+        .applyConstraints({ advanced: [{ torch: newTorchState }] as any })
         .then(() => setTorchOn(newTorchState))
-        .catch(err => {
-          onError?.(`Torch toggle failed: ${err.message}`);
-          console.error(err);
-        });
+        .catch(err => onError?.(`Torch toggle failed: ${err.message}`));
     }
   };
 
-  // Capture image from video feed
   const capture = () => {
     if (!isCameraReady || !videoRef.current || !canvasRef.current) {
       const errorMsg = "Camera not ready.";
@@ -127,12 +138,12 @@ export const VisionScanner = ({
     }
 
     // Flip the context horizontally to mirror the image
-    context.scale(-1, 1); // Mirror horizontally
-    context.translate(-canvas.width, 0); // Adjust position after flip
+    context.scale(-1, 1);
+    context.translate(-canvas.width, 0);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const image = canvas.toDataURL("image/jpeg");
 
-    // Reset the context transform to avoid affecting future draws
+    // Reset the context transform
     context.setTransform(1, 0, 0, 1, 0, 0);
 
     onCapture(image);
