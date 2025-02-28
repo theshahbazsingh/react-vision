@@ -5,7 +5,6 @@ import postcss from "rollup-plugin-postcss";
 import dts from "rollup-plugin-dts";
 
 export default [
-  // Main bundle configuration (JavaScript output)
   {
     input: "src/index.ts",
     output: [
@@ -23,11 +22,10 @@ export default [
     ],
     external: ["react", "react-dom", "react/jsx-runtime"],
   },
-  // Type declaration configuration (.d.ts output)
   {
     input: "src/index.ts",
     output: [{ file: "dist/index.d.ts", format: "es" }],
     plugins: [dts()],
-    external: ["react", "react-dom", "react/jsx-runtime", "./styles.css"], // Add this
+    external: ["react", "react-dom", "react/jsx-runtime", "./styles.css"],
   },
 ];

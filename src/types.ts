@@ -1,4 +1,6 @@
 export interface VisionScannerProps {
-  onCapture: (image: string) => void; // Base64 image callback
-  facingMode?: "user" | "environment"; // Camera direction (default: environment)
+  onCapture: (image: string) => void; // Callback for base64 image
+  facingMode?: "user" | "environment"; // Default camera direction
+  onError?: (error: string) => void; // Error callback
+  resolution?: { width: number; height: number }; // Optional resolution
 }
