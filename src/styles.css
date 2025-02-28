@@ -1,60 +1,38 @@
-.eye-tap-camera {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 16px;
-}
-
-.camera-container {
+.vision-scanner {
     position: relative;
-    cursor: pointer;
+    width: 100%;
+    max-width: 480px;
+    /* Mobile-friendly max width */
+    margin: 0 auto;
 }
 
-video.cover {
+.vision-scanner-video {
     width: 100%;
     height: auto;
-    object-fit: cover;
+    display: block;
 }
 
-.focus-overlay {
+.vision-scanner-canvas {
+    display: none;
+    /* Hidden canvas for capture */
+}
+
+.vision-scanner-capture {
     position: absolute;
-    top: 50%;
+    bottom: 16px;
     left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.5);
+    transform: translateX(-50%);
+    background-color: #007bff;
+    /* Blue button */
     color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    pointer-events: none;
-}
-
-.preview img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 4px;
-}
-
-.capture-btn,
-.retake-btn {
-    margin-top: 8px;
     padding: 8px 16px;
-    background: #007bff;
-    color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    font-size: 16px;
 }
 
-.capture-btn:disabled,
-.retake-btn:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-}
-
-.error {
-    color: red;
-    margin-top: 8px;
-}
-
-.hidden {
-    display: none;
+.vision-scanner-capture:hover {
+    background-color: #0056b3;
+    /* Darker blue on hover */
 }

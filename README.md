@@ -1,9 +1,9 @@
-# React Eye Tap
+# React Vision
 
-A lightweight React camera component with tap-to-focus functionality.
+A lightweight, open-source React library for vision-related tools, starting with a mobile-friendly document scanner.
 
 ## Installation
 
 ```bash
-npm install react-eye-tap
+npm install react-vision
 ```

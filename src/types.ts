@@ -1,10 +1,4 @@
-export interface ReactVisionProps {
-  facingMode?: "user" | "environment";
-  aspectRatio?: number | "cover";
-  onCapture?: (image: string) => void;
-}
-
-export interface ReactVisionRef {
-  takePhoto: () => string;
-  refocus: (x: number, y: number) => Promise<void>;
+export interface VisionScannerProps {
+  onCapture: (image: string) => void; // Base64 image callback
+  facingMode?: "user" | "environment"; // Camera direction (default: environment)
 }

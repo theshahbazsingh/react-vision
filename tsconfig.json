@@ -2,12 +2,13 @@
   "compilerOptions": {
     "target": "es5",
     "module": "esnext",
-    "jsx": "react-jsx",
+    "jsx": "react-jsx", // Enable JSX with React 17+ transform
     "declaration": true,
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "moduleResolution": "node" // Ensure Node-style resolution
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

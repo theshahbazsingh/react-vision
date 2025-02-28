@@ -1,28 +1,41 @@
 {
   "name": "react-vision",
   "version": "1.0.0",
-  "description": "A lightweight React camera component with tap-to-focus",
+  "description": "A lightweight React library for vision tools, starting with a mobile-friendly document scanner",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
+  "type": "module",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "rollup -c"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^28.0.2",
-    "@rollup/plugin-node-resolve": "^16.0.0",
-    "@rollup/plugin-typescript": "^12.1.2",
+    "@rollup/plugin-commonjs": "^25",
+    "@rollup/plugin-node-resolve": "^15",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "rollup": "^4.34.8",
-    "rollup-plugin-dts": "^6.1.1",
-    "typescript": "^5.7.3"
+    "rollup": "^3",
+    "rollup-plugin-dts": "^5",
+    "rollup-plugin-postcss": "^4.0.2",
+    "typescript": "^5"
+  },
+  "author": "Shahbaz Singh",
+  "license": "MIT",
+  "repository": "github:theshahbazsingh/react-vision",
+  "keywords": [
+    "react",
+    "vision",
+    "scanner",
+    "camera",
+    "mobile"
+  ],
+  "dependencies": {
+    "@rollup/plugin-typescript": "^12.1.2",
+    "postcss": "^8.5.3",
+    "tslib": "^2.8.1"
   }
 }
