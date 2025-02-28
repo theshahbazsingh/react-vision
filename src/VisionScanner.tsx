@@ -126,8 +126,15 @@ export const VisionScanner = ({
       return;
     }
 
+    // Flip the context horizontally to mirror the image
+    context.scale(-1, 1); // Mirror horizontally
+    context.translate(-canvas.width, 0); // Adjust position after flip
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const image = canvas.toDataURL("image/jpeg");
+
+    // Reset the context transform to avoid affecting future draws
+    context.setTransform(1, 0, 0, 1, 0, 0);
+
     onCapture(image);
   };
 

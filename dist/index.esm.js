@@ -179,8 +179,13 @@ var VisionScanner = function (_a) {
             console.error(errorMsg);
             return;
         }
+        // Flip the context horizontally to mirror the image
+        context.scale(-1, 1); // Mirror horizontally
+        context.translate(-canvas.width, 0); // Adjust position after flip
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         var image = canvas.toDataURL("image/jpeg");
+        // Reset the context transform to avoid affecting future draws
+        context.setTransform(1, 0, 0, 1, 0, 0);
         onCapture(image);
     };
     return (jsxs("div", { className: "vision-scanner", children: [jsx("video", { ref: videoRef, playsInline: true, className: "vision-scanner-video" }), jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas" }), jsxs("div", { className: "vision-scanner-controls", children: [jsx("button", { onClick: capture, disabled: !isCameraReady, children: "Scan" }), cameraCount > 1 && (jsx("button", { onClick: switchCamera, children: "Flip Camera" })), hasTorch && (jsx("button", { onClick: toggleTorch, children: torchOn ? "Torch Off" : "Torch On" }))] })] }));
