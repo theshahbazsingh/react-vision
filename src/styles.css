@@ -4,16 +4,22 @@
     max-width: 800px;
     margin: 0 auto;
     background-color: #000;
-    border-radius: 8px;
+    border-radius: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    /* Set a fixed aspect ratio to prevent layout shifts */
     aspect-ratio: 4/3;
     overflow: hidden;
     transition: all 0.3s ease;
 }
 
-/* Fullscreen styles */
-.vision-scanner.fullscreen {
+/* Embedded/Expanded modes */
+.vision-scanner.embedded {
+    max-width: 800px;
+    height: auto;
+    position: relative;
+    z-index: 1;
+}
+
+.vision-scanner.expanded {
     position: fixed;
     top: 0;
     left: 0;
@@ -48,10 +54,6 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
-    /* Hardware acceleration */
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
 }
 
 .vision-scanner-loading {
@@ -108,13 +110,13 @@
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background-color: rgba(255, 255, 255, 0.25);
+    background-color: rgba(0, 0, 0, 0.25);
     border: none;
     padding: 4px;
     cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
     transition: all 0.2s ease;
-    border: 2px solid rgba(255, 255, 255, 0.7);
+    border: 3px solid rgba(255, 255, 255, 0.85);
 }
 
 .vision-scanner-capture-button:disabled {
@@ -139,22 +141,23 @@
 .vision-scanner-secondary-controls {
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 24px;
 }
 
-/* Icon buttons */
+/* Icon buttons - iOS style */
 .vision-scanner-icon-button {
-    width: 44px;
-    height: 44px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    background-color: rgba(0, 0, 0, 0.5);
-    border: none;
+    background-color: rgba(40, 40, 40, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.25);
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
     transition: all 0.2s ease;
     color: white;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 
 .vision-scanner-icon-button svg {
@@ -168,18 +171,22 @@
 }
 
 .vision-scanner-icon-button:hover:not(:disabled) {
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgba(60, 60, 60, 0.8);
+    transform: translateY(-2px);
 }
 
 .vision-scanner-icon-button:active:not(:disabled) {
     transform: scale(0.95);
 }
 
+/* Active state for toggle buttons - iOS style */
 .vision-scanner-icon-button.active-button {
-    background-color: #FFCC00;
-    color: black;
+    background-color: #007AFF;
+    /* iOS blue */
+    color: white;
     transform: scale(1.05);
-    box-shadow: 0 0 0 2px white;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.7);
 }
 
 .vision-scanner-status {
@@ -195,9 +202,10 @@
 .status-message {
     background-color: rgba(0, 0, 0, 0.6);
     color: white;
-    padding: 6px 12px;
-    border-radius: 16px;
-    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 15px;
+    font-weight: 500;
 }
 
 /* Document detected indicator */
@@ -213,8 +221,9 @@
 }
 
 .document-ready-message {
-    background-color: rgba(255, 204, 0, 0.9);
-    color: black;
+    background-color: rgba(52, 199, 89, 0.9);
+    /* iOS green */
+    color: white;
     font-weight: 600;
     padding: 10px 20px;
     border-radius: 20px;
@@ -290,7 +299,7 @@
     color: white;
     background-color: rgba(0, 0, 0, 0.6);
     padding: 8px 16px;
-    border-radius: 16px;
+    border-radius: 20px;
     margin-top: 20px;
     font-size: 16px;
     font-weight: 500;
@@ -298,11 +307,126 @@
 
 /* Visual feedback when document is detected */
 .vision-scanner-capture-button.document-ready {
-    background-color: rgba(255, 204, 0, 0.3);
+    background-color: rgba(52, 199, 89, 0.2);
+    /* iOS green background */
+    border-color: rgba(52, 199, 89, 0.8);
 }
 
 .vision-scanner-capture-button.document-ready .vision-scanner-capture-button-inner {
-    background-color: #FFCC00;
+    background-color: #34C759;
+    /* iOS green */
+}
+
+/* Edge adjustment mode */
+.vision-scanner-adjustment-mode {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.adjustment-canvas-container {
+    position: relative;
+    width: 100%;
+    height: 80%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.vision-scanner-adjustment-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    touch-action: none;
+    /* Prevent browser handling of touch events */
+    background-color: #333;
+    /* Visible background while loading */
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 35;
+}
+
+.adjustment-instructions {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    z-index: 25;
+}
+
+.instruction-text {
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 16px;
+    font-weight: 500;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.adjustment-controls {
+    position: absolute;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    padding: 16px;
+    z-index: 25;
+}
+
+.adjustment-button {
+    padding: 12px 30px;
+    border-radius: 30px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+}
+
+.adjustment-button:active {
+    transform: scale(0.97);
+}
+
+.adjustment-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.cancel-button {
+    background-color: rgba(50, 50, 50, 0.9);
+    color: white;
+}
+
+.confirm-button {
+    background-color: #007AFF;
+    /* iOS blue */
+    color: white;
 }
 
 @keyframes fade-in {
@@ -333,22 +457,10 @@
 
 /* Mobile-specific adjustments */
 @media (max-width: 480px) {
-    .vision-scanner {
-        aspect-ratio: unset;
-        /* Remove aspect ratio constraint */
+    .vision-scanner.embedded {
+        aspect-ratio: 3/4;
         max-width: 100%;
-        width: 100%;
-        height: 100vh;
-        /* Full viewport height */
-        height: -webkit-fill-available;
-        /* For iOS Safari */
         margin: 0;
-        border-radius: 0;
-        position: fixed;
-        /* Fixed positioning for full screen */
-        top: 0;
-        left: 0;
-        z-index: 1000;
     }
 
     /* Larger capture button for mobile */
@@ -356,17 +468,15 @@
         width: 84px;
         height: 84px;
         bottom: 32px;
-        /* Ensure the button is visible with shadow and border */
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-        border: 3px solid rgba(255, 255, 255, 0.8);
+        border: 3px solid rgba(255, 255, 255, 0.9);
     }
 
     /* Larger icon buttons for easier tapping */
     .vision-scanner-icon-button {
-        width: 56px;
-        height: 56px;
-        /* Ensure buttons are visible */
-        background-color: rgba(30, 30, 30, 0.85);
+        width: 60px;
+        height: 60px;
+        background-color: rgba(40, 40, 40, 0.85);
         border: 2px solid rgba(255, 255, 255, 0.5);
         box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
     }
@@ -379,8 +489,8 @@
 
     /* More visible active state */
     .vision-scanner-icon-button.active-button {
-        background-color: #FFCC00;
-        color: black;
+        background-color: #007AFF;
+        color: white;
         border: 2px solid white;
         transform: scale(1.1);
     }
@@ -389,7 +499,6 @@
     .vision-scanner-secondary-controls {
         position: fixed;
         bottom: 140px;
-        /* Position above the capture button */
         left: 0;
         right: 0;
         justify-content: space-around;
@@ -404,15 +513,27 @@
     /* Make document indicator more visible */
     .document-ready-message {
         font-size: 16px;
-        padding: 10px 20px;
-        background-color: rgba(255, 204, 0, 0.9);
+        padding: 10px 24px;
+        background-color: rgba(52, 199, 89, 0.9);
         border: 2px solid white;
+    }
+
+    /* Adjust button size in adjustment mode */
+    .adjustment-button {
+        padding: 15px 30px;
+        font-size: 18px;
+        border-radius: 40px;
+    }
+
+    /* Better adjustment mode for mobile */
+    .adjustment-canvas-container {
+        height: 70%;
     }
 }
 
 /* Fix for iOS Safari fullscreen */
 @supports (-webkit-touch-callout: none) {
-    .vision-scanner.fullscreen {
+    .vision-scanner.expanded {
         height: -webkit-fill-available;
     }
 }
