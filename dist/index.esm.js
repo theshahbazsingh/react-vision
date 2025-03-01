@@ -1,5 +1,5 @@
 import { jsxs, jsx } from 'react/jsx-runtime';
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
@@ -71,6 +71,7 @@ var VisionScanner = function (_a) {
     var animationFrameRef = useRef(null);
     var streamRef = useRef(null);
     var processingRef = useRef(false);
+    var containerRef = useRef(null);
     // State that affects UI rendering
     var _d = useState(false), isCameraReady = _d[0], setIsCameraReady = _d[1];
     var _e = useState(0), cameraCount = _e[0], setCameraCount = _e[1];
@@ -78,8 +79,21 @@ var VisionScanner = function (_a) {
     var _g = useState(false), hasTorch = _g[0], setHasTorch = _g[1];
     var _h = useState(false), torchOn = _h[0], setTorchOn = _h[1];
     var _j = useState(false), isOpenCVReady = _j[0], setIsOpenCVReady = _j[1];
-    var _k = useState(false), isEdgeDetectionActive = _k[0], setIsEdgeDetectionActive = _k[1];
+    var _k = useState(true), isEdgeDetectionActive = _k[0], setIsEdgeDetectionActive = _k[1]; // Enabled by default
     var _l = useState(true), isLoading = _l[0], setIsLoading = _l[1];
+    var _m = useState(false), isFullscreen = _m[0], setIsFullscreen = _m[1];
+    var _o = useState(null), documentCorners = _o[0], setDocumentCorners = _o[1];
+    // Internal function to stop stream - doesn't trigger re-renders
+    var stopStreamInternal = useCallback(function () {
+        if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(function (track) { return track.stop(); });
+            streamRef.current = null;
+        }
+    }, []);
     // Load OpenCV.js only once on mount
     useEffect(function () {
         if (typeof window === 'undefined')
@@ -93,43 +107,63 @@ var VisionScanner = function (_a) {
             console.log("OpenCV already loaded");
             return;
         }
-        // Set up global callback for OpenCV initialization
-        // @ts-ignore
-        window.onOpenCvReady = function () {
-            // @ts-ignore
-            cvRef.current = window.cv;
-            setIsOpenCVReady(true);
-            console.log("OpenCV.js initialized");
-        };
         // Add script only if it doesn't exist
         if (!document.getElementById('opencv-script')) {
             var script = document.createElement('script');
             script.id = 'opencv-script';
-            script.src = 'https://docs.opencv.org/4.5.5/opencv.js';
+            script.src = 'https://docs.opencv.org/4.7.0/opencv.js';
             script.async = true;
-            script.onload = function () { return console.log("OpenCV.js script loaded"); };
+            script.onload = function () {
+                console.log("OpenCV.js script loaded, waiting for initialization...");
+                // Start polling for cv object
+                var checkInterval = setInterval(function () {
+                    // @ts-ignore
+                    if (window.cv) {
+                        clearInterval(checkInterval);
+                        // @ts-ignore
+                        cvRef.current = window.cv;
+                        setIsOpenCVReady(true);
+                        console.log("OpenCV.js initialized through polling");
+                    }
+                }, 200);
+                // Set a timeout to prevent infinite polling
+                setTimeout(function () { return clearInterval(checkInterval); }, 20000);
+            };
             script.onerror = function (e) {
                 console.error("Failed to load OpenCV.js", e);
                 onError === null || onError === void 0 ? void 0 : onError("Failed to load computer vision library");
             };
             document.body.appendChild(script);
         }
+        // Add fullscreen event listeners for all browser variants
+        var handleFullscreenChange = function () {
+            setIsFullscreen(!!document.fullscreenElement ||
+                // @ts-ignore - Webkit
+                !!document.webkitFullscreenElement ||
+                // @ts-ignore - Mozilla
+                !!document.mozFullScreenElement ||
+                // @ts-ignore - MS
+                !!document.msFullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+        // Check if user is on mobile
+        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+            // On mobile, start in full height mode by default
+            setIsFullscreen(true);
+        }
         // Cleanup function
         return function () {
             stopStreamInternal();
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
         };
-    }, []); // Empty dependency array - only run once
-    // Internal function to stop stream - doesn't trigger re-renders
-    var stopStreamInternal = useCallback(function () {
-        if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-            animationFrameRef.current = null;
-        }
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(function (track) { return track.stop(); });
-            streamRef.current = null;
-        }
-    }, []);
+    }, [onError, stopStreamInternal]);
     // Camera management functions
     var stopStream = useCallback(function () {
         stopStreamInternal();
@@ -166,7 +200,7 @@ var VisionScanner = function (_a) {
         });
     }); }, [onError]);
     var initCamera = useCallback(function () { return __awaiter(void 0, void 0, void 0, function () {
-        var newStream_1, playVideo_1, err_2;
+        var constraints, newStream_1, playVideo_1, err_2;
         var _a;
         return __generator(this, function (_b) {
             switch (_b.label) {
@@ -184,13 +218,16 @@ var VisionScanner = function (_a) {
                     setIsLoading(true);
                     // Stop any existing stream first
                     stopStreamInternal();
-                    return [4 /*yield*/, navigator.mediaDevices.getUserMedia({
-                            video: {
-                                facingMode: currentFacingMode,
-                                width: { ideal: resolution.width },
-                                height: { ideal: resolution.height },
-                            },
-                        })];
+                    constraints = {
+                        video: {
+                            facingMode: currentFacingMode,
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                            // Prioritize quality over framerate for document scanning
+                            frameRate: { ideal: 30 },
+                        },
+                    };
+                    return [4 /*yield*/, navigator.mediaDevices.getUserMedia(constraints)];
                 case 2:
                     newStream_1 = _b.sent();
                     // Store stream in ref to avoid re-renders
@@ -240,8 +277,159 @@ var VisionScanner = function (_a) {
                 case 4: return [2 /*return*/];
             }
         });
-    }); }, [currentFacingMode, enumerateCameras, onError, resolution.height, resolution.width, stopStreamInternal]);
-    // Edge detection function that uses refs rather than state for processing
+    }); }, [currentFacingMode, enumerateCameras, onError, stopStreamInternal]);
+    // Helper function to calculate rectangularity score
+    var calculateRectangularity = function (corners) {
+        if (corners.length !== 4)
+            return 0;
+        // Calculate sides
+        var sides = [];
+        for (var i = 0; i < 4; i++) {
+            var p1 = corners[i];
+            var p2 = corners[(i + 1) % 4];
+            var dx = p2.x - p1.x;
+            var dy = p2.y - p1.y;
+            sides.push(Math.sqrt(dx * dx + dy * dy));
+        }
+        // Sort sides into pairs (should be 2 pairs of equal lengths for a rectangle)
+        sides.sort(function (a, b) { return a - b; });
+        // Check if sides[0] ≈ sides[1] and sides[2] ≈ sides[3]
+        var ratio1 = Math.min(sides[0], sides[1]) / Math.max(sides[0], sides[1]);
+        var ratio2 = Math.min(sides[2], sides[3]) / Math.max(sides[2], sides[3]);
+        // Check if the aspect ratio is reasonable (not too narrow)
+        var aspectRatio = Math.min(sides[0] / sides[2], sides[2] / sides[0]);
+        // Score based on how rectangular the shape is (all sides paired, reasonable aspect ratio)
+        return (ratio1 * ratio2) * Math.min(1, aspectRatio * 2);
+    };
+    // Document detection function using OpenCV - improved version
+    var detectDocumentCorners = function (src, cv, width, height) {
+        try {
+            // Create matrices for processing
+            var gray = new cv.Mat();
+            var blurred = new cv.Mat();
+            var edges = new cv.Mat();
+            var dilated = new cv.Mat();
+            var contours = new cv.MatVector();
+            var hierarchy = new cv.Mat();
+            var dst = new cv.Mat();
+            // Pre-process the image - more robust preprocessing
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            // Apply bilateral filter for better edge preservation while removing noise
+            cv.bilateralFilter(gray, blurred, 9, 75, 75);
+            // Use adaptive threshold for better results in varying lighting
+            cv.adaptiveThreshold(blurred, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+            // Apply Canny edge detection with better parameters
+            cv.Canny(blurred, edges, 50, 150, 3, true); // Use L2gradient for better accuracy
+            // Dilate edges to connect broken lines
+            var dilationSize = new cv.Size(2, 2);
+            var dilationElement = cv.getStructuringElement(cv.MORPH_RECT, dilationSize);
+            cv.dilate(edges, dilated, dilationElement, new cv.Point(-1, -1), 1);
+            dilationElement.delete();
+            // Find contours on the dilated edge image
+            cv.findContours(dilated, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+            // Filter contours by area, angle, and other properties
+            var bestCorners = null;
+            var maxScore = 0;
+            for (var i = 0; i < contours.size(); i++) {
+                var contour = contours.get(i);
+                var area = cv.contourArea(contour);
+                var frameArea = width * height;
+                // Skip tiny or huge contours
+                if (area < frameArea * 0.03 || area > frameArea * 0.98) {
+                    continue;
+                }
+                // Calculate contour perimeter (arc length)
+                var perimeter = cv.arcLength(contour, true);
+                // Calculate contour complexity score (area / perimeter ratio)
+                // Documents tend to have a certain ratio
+                var complexity = area / (perimeter * perimeter);
+                // Documents should be somewhat convex
+                var hull = new cv.Mat();
+                cv.convexHull(contour, hull);
+                var hullArea = cv.contourArea(hull);
+                var solidity = area / hullArea;
+                hull.delete();
+                // Rectangle approximation
+                var epsilon = 0.02 * perimeter;
+                var approx = new cv.Mat();
+                cv.approxPolyDP(contour, approx, epsilon, true);
+                // Check if approximation has 4 points (rectangular)
+                if (approx.rows === 4) {
+                    // Convert to corner points
+                    var corners = [];
+                    for (var j = 0; j < 4; j++) {
+                        corners.push({
+                            x: approx.data32S[j * 2],
+                            y: approx.data32S[j * 2 + 1]
+                        });
+                    }
+                    // Check if the corners form a convex quadrilateral
+                    var isConvex = cv.isContourConvex(approx);
+                    // Calculate the angles between adjacent sides
+                    var minAngle = 180;
+                    var maxAngle = 0;
+                    for (var j = 0; j < 4; j++) {
+                        var p1 = corners[j];
+                        var p2 = corners[(j + 1) % 4];
+                        var p3 = corners[(j + 2) % 4];
+                        // Calculate angle using dot product
+                        var v1x = p2.x - p1.x;
+                        var v1y = p2.y - p1.y;
+                        var v2x = p3.x - p2.x;
+                        var v2y = p3.y - p2.y;
+                        var dotProduct = v1x * v2x + v1y * v2y;
+                        var mag1 = Math.sqrt(v1x * v1x + v1y * v1y);
+                        var mag2 = Math.sqrt(v2x * v2x + v2y * v2y);
+                        var angle = Math.acos(dotProduct / (mag1 * mag2)) * (180 / Math.PI);
+                        minAngle = Math.min(minAngle, angle);
+                        maxAngle = Math.max(maxAngle, angle);
+                    }
+                    // Calculate aspect score
+                    var aspectScore = calculateRectangularity(corners);
+                    // Calculate total score based on multiple features
+                    // Higher score for shapes that are:
+                    // 1. Convex
+                    // 2. Have angles close to 90°
+                    // 3. Have good aspect ratio
+                    // 4. Have good solidity
+                    var angleScore = (minAngle > 65 && maxAngle < 115) ? (1 - Math.abs(minAngle - 90) / 90) : 0;
+                    var solidityScore = solidity > 0.8 ? solidity : 0;
+                    var totalScore = ((isConvex ? 1 : 0) * 0.3 +
+                        angleScore * 0.3 +
+                        aspectScore * 0.2 +
+                        solidityScore * 0.2) * area; // Weight by area to prefer larger contours
+                    if (totalScore > maxScore) {
+                        maxScore = totalScore;
+                        // Sort corners in order: top-left, top-right, bottom-right, bottom-left
+                        corners.sort(function (a, b) { return a.y + a.x - (b.y + b.x); }); // Top-left first
+                        var tl = corners[0];
+                        var br = corners[corners.length - 1];
+                        // Top-right has smallest difference between y and x
+                        // Bottom-left has largest difference between y and x
+                        corners.sort(function (a, b) { return (a.y - a.x) - (b.y - b.x); });
+                        var tr = corners[0];
+                        var bl = corners[corners.length - 1];
+                        bestCorners = [tl, tr, br, bl];
+                    }
+                }
+                approx.delete();
+            }
+            // Clean up
+            gray.delete();
+            blurred.delete();
+            edges.delete();
+            dilated.delete();
+            dst.delete();
+            contours.delete();
+            hierarchy.delete();
+            return bestCorners;
+        }
+        catch (err) {
+            console.error("Document detection error:", err);
+        }
+        return null;
+    };
+    // Edge detection and document finding function
     var processFrame = useCallback(function () {
         if (!videoRef.current || !edgeCanvasRef.current || !cvRef.current || !isCameraReady || !isOpenCVReady) {
             if (isEdgeDetectionActive) {
@@ -260,32 +448,82 @@ var VisionScanner = function (_a) {
         var cv = cvRef.current;
         var video = videoRef.current;
         var edgeCanvas = edgeCanvasRef.current;
-        // Set canvas size to match video
-        if (edgeCanvas.width !== video.videoWidth || edgeCanvas.height !== video.videoHeight) {
-            edgeCanvas.width = video.videoWidth || resolution.width;
-            edgeCanvas.height = video.videoHeight || resolution.height;
-        }
         try {
-            // Create matrices for processing
-            var src = new cv.Mat(edgeCanvas.height, edgeCanvas.width, cv.CV_8UC4);
-            var dst = new cv.Mat(edgeCanvas.height, edgeCanvas.width, cv.CV_8UC1);
-            var cap = new cv.VideoCapture(video);
-            // Read current frame
-            cap.read(src);
-            // Convert to grayscale
-            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
-            // Apply Gaussian blur to reduce noise
-            cv.GaussianBlur(src, src, new cv.Size(5, 5), 0);
-            // Perform Canny edge detection
-            cv.Canny(src, dst, 50, 150, 3);
-            // Display result on canvas
-            cv.imshow(edgeCanvas, dst);
-            // Clean up to prevent memory leaks
+            // Set canvas size to match video exactly
+            var width = video.videoWidth || resolution.width;
+            var height = video.videoHeight || resolution.height;
+            // Only resize if needed to avoid unnecessary reflows
+            if (edgeCanvas.width !== width || edgeCanvas.height !== height) {
+                edgeCanvas.width = width;
+                edgeCanvas.height = height;
+            }
+            // Get the canvas context and draw the current video frame
+            var ctx_1 = edgeCanvas.getContext('2d');
+            if (!ctx_1) {
+                throw new Error("Could not get canvas context");
+            }
+            // Clear previous drawings
+            ctx_1.clearRect(0, 0, width, height);
+            // Create a temporary canvas to get the image data
+            var tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            var tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) {
+                throw new Error("Could not get temporary canvas context");
+            }
+            // Draw the current video frame to the temp canvas
+            tempCtx.drawImage(video, 0, 0, width, height);
+            // Get the image data from the canvas
+            var imageData = tempCtx.getImageData(0, 0, width, height);
+            // Create OpenCV matrix from the image data
+            var src = cv.matFromImageData(imageData);
+            // Detect document corners
+            var corners = detectDocumentCorners(src, cv, width, height);
+            // If corners were found, draw overlay
+            if (corners && corners.length === 4) {
+                // Draw semi-transparent yellow quad
+                ctx_1.beginPath();
+                ctx_1.moveTo(corners[0].x, corners[0].y);
+                ctx_1.lineTo(corners[1].x, corners[1].y);
+                ctx_1.lineTo(corners[2].x, corners[2].y);
+                ctx_1.lineTo(corners[3].x, corners[3].y);
+                ctx_1.closePath();
+                ctx_1.fillStyle = 'rgba(255, 255, 0, 0.25)';
+                ctx_1.fill();
+                // Draw solid yellow border
+                ctx_1.beginPath();
+                ctx_1.moveTo(corners[0].x, corners[0].y);
+                ctx_1.lineTo(corners[1].x, corners[1].y);
+                ctx_1.lineTo(corners[2].x, corners[2].y);
+                ctx_1.lineTo(corners[3].x, corners[3].y);
+                ctx_1.closePath();
+                ctx_1.strokeStyle = '#FFCC00';
+                ctx_1.lineWidth = 3;
+                ctx_1.stroke();
+                // Draw corner dots
+                ctx_1.fillStyle = '#FFCC00';
+                corners.forEach(function (corner) {
+                    ctx_1.beginPath();
+                    ctx_1.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
+                    ctx_1.fill();
+                });
+                // Store corners for capture
+                setDocumentCorners(corners);
+            }
+            else {
+                setDocumentCorners(null);
+            }
+            // Clean up
             src.delete();
-            dst.delete();
         }
         catch (err) {
             console.error("Edge detection error:", err);
+            // Clear the canvas on error to prevent showing garbage
+            var ctx = edgeCanvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, edgeCanvas.width, edgeCanvas.height);
+            }
         }
         finally {
             processingRef.current = false;
@@ -308,14 +546,14 @@ var VisionScanner = function (_a) {
     useEffect(function () {
         // Start or stop edge detection based on isEdgeDetectionActive state
         if (isEdgeDetectionActive) {
-            if (!animationFrameRef.current) {
-                console.log("Starting edge detection");
+            if (!animationFrameRef.current && isOpenCVReady) {
+                console.log("Starting document detection");
                 animationFrameRef.current = requestAnimationFrame(processFrame);
             }
         }
         else {
             if (animationFrameRef.current) {
-                console.log("Stopping edge detection");
+                console.log("Stopping document detection");
                 cancelAnimationFrame(animationFrameRef.current);
                 animationFrameRef.current = null;
                 // Clear edge canvas when deactivated
@@ -325,6 +563,8 @@ var VisionScanner = function (_a) {
                         ctx.clearRect(0, 0, edgeCanvasRef.current.width, edgeCanvasRef.current.height);
                     }
                 }
+                // Clear corners
+                setDocumentCorners(null);
             }
         }
         // Cleanup function
@@ -334,7 +574,7 @@ var VisionScanner = function (_a) {
                 animationFrameRef.current = null;
             }
         };
-    }, [isEdgeDetectionActive, processFrame]);
+    }, [isEdgeDetectionActive, isOpenCVReady, processFrame]);
     // UI interaction handlers
     var switchCamera = useCallback(function () {
         stopStream();
@@ -351,13 +591,65 @@ var VisionScanner = function (_a) {
         }
     }, [hasTorch, onError, torchOn]);
     var toggleEdgeDetection = useCallback(function () {
-        console.log("Toggle edge detection:", !isEdgeDetectionActive, "OpenCV ready:", isOpenCVReady);
+        console.log("Toggle document detection:", !isEdgeDetectionActive, "OpenCV ready:", isOpenCVReady);
         setIsEdgeDetectionActive(function (prev) { return !prev; });
     }, [isEdgeDetectionActive, isOpenCVReady]);
+    var toggleFullscreen = useCallback(function () {
+        // Try standard fullscreen API first
+        if (!document.fullscreenElement && containerRef.current) {
+            try {
+                containerRef.current.requestFullscreen().catch(function (err) {
+                    console.warn("Standard fullscreen failed: ".concat(err.message));
+                    // If standard fullscreen fails, just set a class for CSS to handle
+                    setIsFullscreen(true);
+                });
+            }
+            catch (err) {
+                console.warn("Fullscreen API not supported, using CSS fallback");
+                setIsFullscreen(true);
+            }
+        }
+        else if (document.exitFullscreen) {
+            try {
+                document.exitFullscreen().catch(function () {
+                    // If exit fails, manually toggle the state
+                    setIsFullscreen(false);
+                });
+            }
+            catch (err) {
+                console.warn("Exit fullscreen API failed, using CSS fallback");
+                setIsFullscreen(false);
+            }
+        }
+        else {
+            // Toggle fullscreen state manually for CSS fallback
+            setIsFullscreen(function (prev) { return !prev; });
+        }
+    }, []);
+    // Enhanced capture function that uses the detected document corners if available
     var capture = useCallback(function () {
         if (!isCameraReady || !videoRef.current || !canvasRef.current) {
             onError === null || onError === void 0 ? void 0 : onError("Camera not ready for capture");
             return;
+        }
+        // Visual feedback for capture - flash animation
+        if (edgeCanvasRef.current) {
+            var flashCtx_1 = edgeCanvasRef.current.getContext('2d');
+            if (flashCtx_1) {
+                // Create flash effect
+                flashCtx_1.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                flashCtx_1.fillRect(0, 0, edgeCanvasRef.current.width, edgeCanvasRef.current.height);
+                // Clear the flash after a short delay
+                setTimeout(function () {
+                    if (edgeCanvasRef.current && flashCtx_1) {
+                        flashCtx_1.clearRect(0, 0, edgeCanvasRef.current.width, edgeCanvasRef.current.height);
+                        // Redraw document overlay if needed
+                        if (isEdgeDetectionActive) {
+                            processFrame();
+                        }
+                    }
+                }, 300);
+            }
         }
         var video = videoRef.current;
         var canvas = canvasRef.current;
@@ -371,19 +663,69 @@ var VisionScanner = function (_a) {
         }
         // Capture current frame
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        var imageData = canvas.toDataURL("image/jpeg");
-        // Pass image to parent component
+        // If we have document corners and OpenCV is ready, create a perspective corrected version
+        if (documentCorners && documentCorners.length === 4 && isOpenCVReady && cvRef.current) {
+            try {
+                var cv = cvRef.current;
+                // Create source matrix from canvas
+                var imgData = context.getImageData(0, 0, canvas.width, canvas.height);
+                var src = cv.matFromImageData(imgData);
+                // Source points (document corners detected in the image)
+                var srcPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                    documentCorners[0].x, documentCorners[0].y, // Top-left
+                    documentCorners[1].x, documentCorners[1].y, // Top-right
+                    documentCorners[2].x, documentCorners[2].y, // Bottom-right
+                    documentCorners[3].x, documentCorners[3].y // Bottom-left
+                ]);
+                // Calculate width and height of output document
+                var widthA = Math.sqrt(Math.pow(documentCorners[2].x - documentCorners[3].x, 2) +
+                    Math.pow(documentCorners[2].y - documentCorners[3].y, 2));
+                var widthB = Math.sqrt(Math.pow(documentCorners[1].x - documentCorners[0].x, 2) +
+                    Math.pow(documentCorners[1].y - documentCorners[0].y, 2));
+                var maxWidth = Math.max(Math.floor(widthA), Math.floor(widthB));
+                var heightA = Math.sqrt(Math.pow(documentCorners[1].x - documentCorners[2].x, 2) +
+                    Math.pow(documentCorners[1].y - documentCorners[2].y, 2));
+                var heightB = Math.sqrt(Math.pow(documentCorners[0].x - documentCorners[3].x, 2) +
+                    Math.pow(documentCorners[0].y - documentCorners[3].y, 2));
+                var maxHeight = Math.max(Math.floor(heightA), Math.floor(heightB));
+                // Destination points (rectangle)
+                var dstPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                    0, 0, // Top-left
+                    maxWidth - 1, 0, // Top-right
+                    maxWidth - 1, maxHeight - 1, // Bottom-right
+                    0, maxHeight - 1 // Bottom-left
+                ]);
+                // Get perspective transform and apply it
+                var M = cv.getPerspectiveTransform(srcPoints, dstPoints);
+                var dst = new cv.Mat();
+                cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight));
+                // Display result on canvas
+                var correctedCanvas = document.createElement('canvas');
+                correctedCanvas.width = maxWidth;
+                correctedCanvas.height = maxHeight;
+                cv.imshow(correctedCanvas, dst);
+                // Get image data from the corrected canvas
+                var imageData_1 = correctedCanvas.toDataURL("image/jpeg", 0.95);
+                // Clean up
+                src.delete();
+                dst.delete();
+                srcPoints.delete();
+                dstPoints.delete();
+                M.delete();
+                // Pass the corrected image to parent component
+                onCapture(imageData_1);
+                return;
+            }
+            catch (err) {
+                console.error("Error during perspective correction:", err);
+                // Fall back to uncorrected image
+            }
+        }
+        // If perspective correction failed or wasn't attempted, use the original image
+        var imageData = canvas.toDataURL("image/jpeg", 0.92);
         onCapture(imageData);
-    }, [isCameraReady, onCapture, onError, resolution.height, resolution.width]);
-    return (jsxs("div", { className: "vision-scanner", children: [jsx("video", { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "vision-scanner-video" }), jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas", style: { display: 'none' } }), jsx("canvas", { ref: edgeCanvasRef, className: "vision-scanner-edge-canvas", style: {
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    display: isEdgeDetectionActive ? 'block' : 'none',
-                    pointerEvents: 'none'
-                } }), isLoading && (jsxs("div", { className: "vision-scanner-loading", children: [jsx("div", { className: "loading-spinner" }), jsx("div", { className: "loading-text", children: "Initializing camera..." })] })), jsxs("div", { className: "vision-scanner-controls", children: [jsx("button", { onClick: capture, className: "vision-scanner-button primary-button", disabled: !isCameraReady, children: "Scan Document" }), cameraCount > 1 && (jsx("button", { onClick: switchCamera, className: "vision-scanner-button", children: "Switch Camera" })), hasTorch && (jsx("button", { onClick: toggleTorch, className: "vision-scanner-button", children: torchOn ? "Light Off" : "Light On" })), jsx("button", { onClick: toggleEdgeDetection, disabled: !isCameraReady || !isOpenCVReady, className: "vision-scanner-button ".concat(isEdgeDetectionActive ? 'active-button' : ''), children: isEdgeDetectionActive ? "Hide Edges" : "Show Edges" })] }), !isOpenCVReady && isCameraReady && (jsx("div", { className: "vision-scanner-status", children: jsx("div", { className: "status-message", children: "Loading vision features..." }) }))] }));
+    }, [isCameraReady, onCapture, onError, resolution.height, resolution.width, documentCorners, isEdgeDetectionActive, isOpenCVReady, processFrame]);
+    return (jsxs("div", { ref: containerRef, className: "vision-scanner ".concat(isFullscreen ? 'fullscreen' : ''), children: [jsx("video", { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "vision-scanner-video" }), jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas", style: { display: 'none' } }), jsx("canvas", { ref: edgeCanvasRef, className: "vision-scanner-edge-canvas" }), isLoading && (jsxs("div", { className: "vision-scanner-loading", children: [jsx("div", { className: "loading-spinner" }), jsx("div", { className: "loading-text", children: "Initializing camera..." })] })), isCameraReady && isOpenCVReady && isEdgeDetectionActive && !documentCorners && (jsxs("div", { className: "document-guide-overlay", children: [jsxs("div", { className: "document-guide-corners", children: [jsx("div", { className: "corner top-left" }), jsx("div", { className: "corner top-right" }), jsx("div", { className: "corner bottom-right" }), jsx("div", { className: "corner bottom-left" })] }), jsx("div", { className: "guide-text", children: "Position document within frame" })] })), jsxs("div", { className: "vision-scanner-controls", children: [jsx("button", { onClick: capture, className: "vision-scanner-capture-button ".concat(documentCorners ? 'document-ready' : ''), disabled: !isCameraReady, "aria-label": "Capture", children: jsx("span", { className: "vision-scanner-capture-button-inner" }) }), jsxs("div", { className: "vision-scanner-secondary-controls", children: [cameraCount > 1 && (jsx("button", { onClick: switchCamera, className: "vision-scanner-icon-button", "aria-label": "Switch Camera", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("path", { d: "M20 16v4a2 2 0 0 1-2 2h-4" }), jsx("path", { d: "M14 14l6 6" }), jsx("path", { d: "M4 8V4a2 2 0 0 1 2-2h4" }), jsx("path", { d: "M10 10L4 4" })] }) })), jsx("button", { onClick: toggleFullscreen, className: "vision-scanner-icon-button ".concat(isFullscreen ? 'active-button' : ''), "aria-label": isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen", children: isFullscreen ? (jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("path", { d: "M8 3v3a2 2 0 0 1-2 2H3" }), jsx("path", { d: "M21 8h-3a2 2 0 0 1-2-2V3" }), jsx("path", { d: "M3 16h3a2 2 0 0 1 2 2v3" }), jsx("path", { d: "M16 21v-3a2 2 0 0 1 2-2h3" })] })) : (jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("path", { d: "M8 3H5a2 2 0 0 0-2 2v3" }), jsx("path", { d: "M21 8V5a2 2 0 0 0-2-2h-3" }), jsx("path", { d: "M3 16v3a2 2 0 0 0 2 2h3" }), jsx("path", { d: "M16 21h3a2 2 0 0 0 2-2v-3" })] })) }), hasTorch && (jsx("button", { onClick: toggleTorch, className: "vision-scanner-icon-button ".concat(torchOn ? 'active-button' : ''), "aria-label": torchOn ? "Turn Off Light" : "Turn On Light", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("circle", { cx: "12", cy: "12", r: "5" }), jsx("line", { x1: "12", y1: "1", x2: "12", y2: "3" }), jsx("line", { x1: "12", y1: "21", x2: "12", y2: "23" }), jsx("line", { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" }), jsx("line", { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" }), jsx("line", { x1: "1", y1: "12", x2: "3", y2: "12" }), jsx("line", { x1: "21", y1: "12", x2: "23", y2: "12" }), jsx("line", { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" }), jsx("line", { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" })] }) })), jsx("button", { onClick: toggleEdgeDetection, disabled: !isCameraReady || !isOpenCVReady, className: "vision-scanner-icon-button ".concat(isEdgeDetectionActive ? 'active-button' : ''), "aria-label": isEdgeDetectionActive ? "Hide Document Detection" : "Show Document Detection", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }), jsx("line", { x1: "3", y1: "9", x2: "21", y2: "9" }), jsx("line", { x1: "9", y1: "21", x2: "9", y2: "9" })] }) })] })] }), !isOpenCVReady && isCameraReady && (jsx("div", { className: "vision-scanner-status", children: jsx("div", { className: "status-message", children: "Loading vision features..." }) })), documentCorners && (jsx("div", { className: "vision-scanner-document-indicator", children: jsx("div", { className: "document-ready-message", children: "Document detected" }) }))] }));
 };
 
 export { VisionScanner };

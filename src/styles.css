@@ -9,6 +9,22 @@
     /* Set a fixed aspect ratio to prevent layout shifts */
     aspect-ratio: 4/3;
     overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* Fullscreen styles */
+.vision-scanner.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100vh;
+    z-index: 9999;
+    border-radius: 0;
+    aspect-ratio: unset;
 }
 
 .vision-scanner-video {
@@ -73,61 +89,97 @@
     font-size: 16px;
 }
 
+/* iOS-style controls */
 .vision-scanner-controls {
     position: absolute;
-    bottom: 16px;
+    bottom: 24px;
     left: 0;
     right: 0;
     display: flex;
-    justify-content: center;
-    gap: 10px;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
     padding: 0 16px;
     z-index: 20;
-    /* Prevent layout shifts */
-    height: 48px;
 }
 
-.vision-scanner-button {
-    padding: 8px 16px;
+/* iOS-style camera button */
+.vision-scanner-capture-button {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.25);
     border: none;
-    border-radius: 20px;
-    background-color: rgba(33, 150, 243, 0.9);
-    color: white;
-    font-weight: 500;
+    padding: 4px;
     cursor: pointer;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     transition: all 0.2s ease;
-    /* Prevent text selection */
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    /* Hardware acceleration */
-    transform: translateZ(0);
+    border: 2px solid rgba(255, 255, 255, 0.7);
 }
 
-.vision-scanner-button:hover {
-    background-color: #1976d2;
-}
-
-.vision-scanner-button:active {
-    transform: translateY(1px) translateZ(0);
-}
-
-.vision-scanner-button:disabled {
-    background-color: rgba(204, 204, 204, 0.8);
+.vision-scanner-capture-button:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
 }
 
-.vision-scanner-button.primary-button {
-    background-color: rgba(76, 175, 80, 0.9);
+.vision-scanner-capture-button-inner {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: white;
+    transition: all 0.2s ease;
 }
 
-.vision-scanner-button.primary-button:hover {
-    background-color: #388e3c;
+.vision-scanner-capture-button:active:not(:disabled) .vision-scanner-capture-button-inner {
+    transform: scale(0.9);
 }
 
-.vision-scanner-button.active-button {
-    background-color: rgba(76, 175, 80, 0.9);
+/* Secondary controls container */
+.vision-scanner-secondary-controls {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* Icon buttons */
+.vision-scanner-icon-button {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+}
+
+.vision-scanner-icon-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+.vision-scanner-icon-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.vision-scanner-icon-button:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.vision-scanner-icon-button:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.vision-scanner-icon-button.active-button {
+    background-color: #FFCC00;
+    color: black;
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px white;
 }
 
 .vision-scanner-status {
@@ -146,4 +198,221 @@
     padding: 6px 12px;
     border-radius: 16px;
     font-size: 14px;
+}
+
+/* Document detected indicator */
+.vision-scanner-document-indicator {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    z-index: 21;
+    animation: fade-in 0.3s ease, pulse 2s infinite ease-in-out;
+}
+
+.document-ready-message {
+    background-color: rgba(255, 204, 0, 0.9);
+    color: black;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Document guide overlay for when no document is detected */
+.document-guide-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.document-guide-corners {
+    width: 90%;
+    height: 70%;
+    position: relative;
+    border: 2px dashed rgba(255, 204, 0, 0.6);
+    border-radius: 16px;
+}
+
+.document-guide-corners .corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: #FFCC00;
+    border-style: solid;
+    border-width: 4px;
+}
+
+.document-guide-corners .top-left {
+    top: -2px;
+    left: -2px;
+    border-right: none;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+}
+
+.document-guide-corners .top-right {
+    top: -2px;
+    right: -2px;
+    border-left: none;
+    border-bottom: none;
+    border-top-right-radius: 8px;
+}
+
+.document-guide-corners .bottom-left {
+    bottom: -2px;
+    left: -2px;
+    border-right: none;
+    border-top: none;
+    border-bottom-left-radius: 8px;
+}
+
+.document-guide-corners .bottom-right {
+    bottom: -2px;
+    right: -2px;
+    border-left: none;
+    border-top: none;
+    border-bottom-right-radius: 8px;
+}
+
+.guide-text {
+    color: white;
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 8px 16px;
+    border-radius: 16px;
+    margin-top: 20px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Visual feedback when document is detected */
+.vision-scanner-capture-button.document-ready {
+    background-color: rgba(255, 204, 0, 0.3);
+}
+
+.vision-scanner-capture-button.document-ready .vision-scanner-capture-button-inner {
+    background-color: #FFCC00;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 480px) {
+    .vision-scanner {
+        aspect-ratio: unset;
+        /* Remove aspect ratio constraint */
+        max-width: 100%;
+        width: 100%;
+        height: 100vh;
+        /* Full viewport height */
+        height: -webkit-fill-available;
+        /* For iOS Safari */
+        margin: 0;
+        border-radius: 0;
+        position: fixed;
+        /* Fixed positioning for full screen */
+        top: 0;
+        left: 0;
+        z-index: 1000;
+    }
+
+    /* Larger capture button for mobile */
+    .vision-scanner-capture-button {
+        width: 84px;
+        height: 84px;
+        bottom: 32px;
+        /* Ensure the button is visible with shadow and border */
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        border: 3px solid rgba(255, 255, 255, 0.8);
+    }
+
+    /* Larger icon buttons for easier tapping */
+    .vision-scanner-icon-button {
+        width: 56px;
+        height: 56px;
+        /* Ensure buttons are visible */
+        background-color: rgba(30, 30, 30, 0.85);
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Bigger icons */
+    .vision-scanner-icon-button svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    /* More visible active state */
+    .vision-scanner-icon-button.active-button {
+        background-color: #FFCC00;
+        color: black;
+        border: 2px solid white;
+        transform: scale(1.1);
+    }
+
+    /* Position secondary controls better */
+    .vision-scanner-secondary-controls {
+        position: fixed;
+        bottom: 140px;
+        /* Position above the capture button */
+        left: 0;
+        right: 0;
+        justify-content: space-around;
+        padding: 0 20px;
+    }
+
+    /* Reposition main controls */
+    .vision-scanner-controls {
+        bottom: 36px;
+    }
+
+    /* Make document indicator more visible */
+    .document-ready-message {
+        font-size: 16px;
+        padding: 10px 20px;
+        background-color: rgba(255, 204, 0, 0.9);
+        border: 2px solid white;
+    }
+}
+
+/* Fix for iOS Safari fullscreen */
+@supports (-webkit-touch-callout: none) {
+    .vision-scanner.fullscreen {
+        height: -webkit-fill-available;
+    }
 }
