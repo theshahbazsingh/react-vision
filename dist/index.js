@@ -74,7 +74,7 @@ typeof SuppressedError === "function" ? SuppressedError : function (error, suppr
 };
 
 var VisionScanner = function (_a) {
-    var onCapture = _a.onCapture, _b = _a.facingMode, facingMode = _b === void 0 ? "environment" : _b, onError = _a.onError; _a.resolution;
+    var onCapture = _a.onCapture, _b = _a.facingMode, facingMode = _b === void 0 ? "environment" : _b, _c = _a.onError, onError = _c === void 0 ? function () { } : _c; _a.resolution;
     // Refs
     var videoRef = react.useRef(null);
     var canvasRef = react.useRef(null);
@@ -88,24 +88,34 @@ var VisionScanner = function (_a) {
     var containerRef = react.useRef(null);
     var capturedImageRef = react.useRef(null);
     var cornerCacheRef = react.useRef(null);
+    var orientationRef = react.useRef("portrait");
+    var resizeObserverRef = react.useRef(null);
     // State
-    var _d = react.useState(false), isCameraReady = _d[0], setIsCameraReady = _d[1];
-    var _e = react.useState(0), cameraCount = _e[0], setCameraCount = _e[1];
-    var _f = react.useState(facingMode), currentFacingMode = _f[0], setCurrentFacingMode = _f[1];
-    var _g = react.useState(false), hasTorch = _g[0], setHasTorch = _g[1];
-    var _h = react.useState(false), torchOn = _h[0], setTorchOn = _h[1];
-    var _j = react.useState(false), isOpenCVReady = _j[0], setIsOpenCVReady = _j[1];
-    var _k = react.useState(true), isEdgeDetectionActive = _k[0], setIsEdgeDetectionActive = _k[1];
-    var _l = react.useState(true), isLoading = _l[0], setIsLoading = _l[1];
-    var _m = react.useState(true), isEmbedded = _m[0], setIsEmbedded = _m[1];
-    var _o = react.useState(null), documentCorners = _o[0], setDocumentCorners = _o[1];
+    var _e = react.useState(false), isCameraReady = _e[0], setIsCameraReady = _e[1];
+    var _f = react.useState(0), cameraCount = _f[0], setCameraCount = _f[1];
+    var _g = react.useState(facingMode), currentFacingMode = _g[0], setCurrentFacingMode = _g[1];
+    var _h = react.useState(false), hasTorch = _h[0], setHasTorch = _h[1];
+    var _j = react.useState(false), torchOn = _j[0], setTorchOn = _j[1];
+    var _k = react.useState(false), isOpenCVReady = _k[0], setIsOpenCVReady = _k[1];
+    var _l = react.useState(true), isEdgeDetectionActive = _l[0], setIsEdgeDetectionActive = _l[1];
+    var _m = react.useState(true), isLoading = _m[0], setIsLoading = _m[1];
+    var _o = react.useState(true), isEmbedded = _o[0], setIsEmbedded = _o[1];
+    var _p = react.useState(null), documentCorners = _p[0], setDocumentCorners = _p[1];
+    var _q = react.useState(null), errorMessage = _q[0], setErrorMessage = _q[1];
+    var _r = react.useState(false), permissionDenied = _r[0], setPermissionDenied = _r[1];
     // Edge adjustment mode - separate from the camera state
-    var _p = react.useState(false), isAdjustmentMode = _p[0], setIsAdjustmentMode = _p[1];
-    var _q = react.useState(null), capturedImage = _q[0], setCapturedImage = _q[1];
-    var _r = react.useState(false), imageLoaded = _r[0], setImageLoaded = _r[1];
-    var _s = react.useState(null), adjustedCorners = _s[0], setAdjustedCorners = _s[1];
-    var _t = react.useState(null), activeCornerIndex = _t[0], setActiveCornerIndex = _t[1];
-    var _u = react.useState(false), isDragging = _u[0], setIsDragging = _u[1];
+    var _s = react.useState(false), isAdjustmentMode = _s[0], setIsAdjustmentMode = _s[1];
+    var _t = react.useState(null), capturedImage = _t[0], setCapturedImage = _t[1];
+    var _u = react.useState(false), imageLoaded = _u[0], setImageLoaded = _u[1];
+    var _v = react.useState(null), adjustedCorners = _v[0], setAdjustedCorners = _v[1];
+    var _w = react.useState(null), activeCornerIndex = _w[0], setActiveCornerIndex = _w[1];
+    var _x = react.useState(false), isDragging = _x[0], setIsDragging = _x[1];
+    // Error handling wrapper
+    var handleError = react.useCallback(function (message) {
+        console.error(message);
+        setErrorMessage(message);
+        onError(message);
+    }, [onError]);
     // Stop stream
     var stopStreamInternal = react.useCallback(function () {
         if (animationFrameRef.current) {
@@ -117,7 +127,56 @@ var VisionScanner = function (_a) {
             streamRef.current = null;
         }
     }, []);
-    // Load OpenCV.js
+    // Detect screen orientation changes
+    react.useEffect(function () {
+        var handleOrientationChange = function () {
+            var isPortrait = window.innerHeight > window.innerWidth;
+            orientationRef.current = isPortrait ? "portrait" : "landscape";
+            // Reset corner cache on orientation change to force recalculation
+            cornerCacheRef.current = null;
+            // If camera is ready, we need to adjust canvas dimensions
+            if (videoRef.current && edgeCanvasRef.current && isCameraReady) {
+                var video_1 = videoRef.current;
+                var canvas_1 = edgeCanvasRef.current;
+                // Ensure canvas matches video dimensions after orientation change
+                setTimeout(function () {
+                    if (video_1 && canvas_1) {
+                        canvas_1.width = video_1.videoWidth;
+                        canvas_1.height = video_1.videoHeight;
+                    }
+                }, 300); // Short delay to allow video dimensions to update
+            }
+        };
+        window.addEventListener('resize', handleOrientationChange);
+        // Set initial orientation
+        handleOrientationChange();
+        return function () {
+            window.removeEventListener('resize', handleOrientationChange);
+        };
+    }, [isCameraReady]);
+    // Monitor container dimensions with ResizeObserver
+    react.useEffect(function () {
+        if (typeof ResizeObserver === 'undefined' || !containerRef.current)
+            return;
+        resizeObserverRef.current = new ResizeObserver(function (entries) {
+            if (!entries[0])
+                return;
+            var containerWidth = entries[0].contentRect.width;
+            var containerHeight = entries[0].contentRect.height;
+            // Check if container dimensions change significantly
+            if (cornerCacheRef.current && (containerWidth < 300 || containerHeight < 300)) {
+                // Reset corner cache if container becomes too small
+                cornerCacheRef.current = null;
+            }
+        });
+        resizeObserverRef.current.observe(containerRef.current);
+        return function () {
+            if (resizeObserverRef.current) {
+                resizeObserverRef.current.disconnect();
+            }
+        };
+    }, []);
+    // Load OpenCV.js with improved error handling
     react.useEffect(function () {
         if (typeof window === 'undefined')
             return;
@@ -133,7 +192,14 @@ var VisionScanner = function (_a) {
             script.id = 'opencv-script';
             script.src = 'https://docs.opencv.org/4.7.0/opencv.js';
             script.async = true;
+            // Track loading time
+            var startTime_1 = Date.now();
+            var timeoutLimit_1 = 15000; // 15 seconds timeout
+            var loadingTimeout_1 = setTimeout(function () {
+                handleError("Computer vision library taking too long to load. Please check your connection and try again.");
+            }, timeoutLimit_1);
             script.onload = function () {
+                clearTimeout(loadingTimeout_1);
                 var checkInterval = setInterval(function () {
                     // @ts-ignore
                     if (window.cv) {
@@ -141,19 +207,26 @@ var VisionScanner = function (_a) {
                         // @ts-ignore
                         cvRef.current = window.cv;
                         setIsOpenCVReady(true);
+                        console.log("OpenCV loaded in ".concat(Date.now() - startTime_1, "ms"));
+                    }
+                    else if (Date.now() - startTime_1 > timeoutLimit_1) {
+                        clearInterval(checkInterval);
+                        handleError("Failed to initialize computer vision library");
                     }
                 }, 100);
-                setTimeout(function () { return clearInterval(checkInterval); }, 10000);
+                // Safety cleanup after 20 seconds
+                setTimeout(function () { return clearInterval(checkInterval); }, 20000);
             };
             script.onerror = function () {
-                onError === null || onError === void 0 ? void 0 : onError("Failed to load computer vision library");
+                clearTimeout(loadingTimeout_1);
+                handleError("Failed to load computer vision library. Please check your connection and try again.");
             };
             document.body.appendChild(script);
         }
         return function () {
             stopStreamInternal();
         };
-    }, [onError, stopStreamInternal]);
+    }, [handleError, stopStreamInternal]);
     // Camera management
     var stopStream = react.useCallback(function () {
         stopStreamInternal();
@@ -195,8 +268,11 @@ var VisionScanner = function (_a) {
                 case 0:
                     if (typeof window === 'undefined')
                         return [2 /*return*/];
+                    // Reset error states
+                    setErrorMessage(null);
+                    setPermissionDenied(false);
                     if (!((_a = navigator.mediaDevices) === null || _a === void 0 ? void 0 : _a.getUserMedia)) {
-                        onError === null || onError === void 0 ? void 0 : onError("Camera not supported in this browser");
+                        handleError("Camera not supported in this browser");
                         setIsLoading(false);
                         return [2 /*return*/];
                     }
@@ -238,7 +314,7 @@ var VisionScanner = function (_a) {
                                     case 2: return [3 /*break*/, 4];
                                     case 3:
                                         err_3 = _a.sent();
-                                        onError === null || onError === void 0 ? void 0 : onError("Video playback failed: ".concat(err_3.message));
+                                        handleError("Video playback failed: ".concat(err_3.message));
                                         setIsLoading(false);
                                         return [3 /*break*/, 4];
                                     case 4: return [2 /*return*/];
@@ -249,14 +325,20 @@ var VisionScanner = function (_a) {
                     return [3 /*break*/, 4];
                 case 3:
                     err_2 = _b.sent();
-                    onError === null || onError === void 0 ? void 0 : onError("Camera access error: ".concat(err_2.message));
+                    if (err_2.name === 'NotAllowedError' || err_2.name === 'PermissionDeniedError') {
+                        setPermissionDenied(true);
+                        handleError("Camera access denied. Please allow camera access to use the document scanner.");
+                    }
+                    else {
+                        handleError("Camera access error: ".concat(err_2.message));
+                    }
                     setIsLoading(false);
                     return [3 /*break*/, 4];
                 case 4: return [2 /*return*/];
             }
         });
-    }); }, [currentFacingMode, enumerateCameras, onError, stopStreamInternal]);
-    // Optimized document detection - further improved stability
+    }); }, [currentFacingMode, enumerateCameras, handleError, stopStreamInternal]);
+    // Optimized document detection with improvements
     var detectDocumentCorners = react.useCallback(function (src, cv, width, height) {
         try {
             // Use cornerCacheRef to stabilize detection between frames
@@ -268,111 +350,136 @@ var VisionScanner = function (_a) {
             var edges = new cv.Mat();
             var contours = new cv.MatVector();
             var hierarchy = new cv.Mat();
-            // Pre-process the image
-            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-            cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-            cv.Canny(gray, edges, 30, 200); // Adjusted thresholds for better stability
-            // Find contours
-            cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-            var bestCorners = null;
-            var maxScore = 0;
-            var minArea = width * height * 0.05;
-            // Process largest contours first
-            var contourInfo = [];
-            for (var i = 0; i < contours.size(); i++) {
-                var contour = contours.get(i);
-                var area = cv.contourArea(contour);
-                if (area > minArea) {
-                    contourInfo.push({ index: i, area: area });
-                }
-            }
-            // Sort by area, largest first
-            contourInfo.sort(function (a, b) { return b.area - a.area; });
-            // Only check top contours
-            var contoursToCheck = Math.min(8, contourInfo.length);
-            for (var i = 0; i < contoursToCheck; i++) {
-                var _a = contourInfo[i], index = _a.index, area = _a.area;
-                var contour = contours.get(index);
-                var perimeter = cv.arcLength(contour, true);
-                // Approximate the contour - try multiple epsilon values for stability
-                var epsilons = [0.02, 0.03, 0.04]; // Try multiple approximation levels
-                for (var _i = 0, epsilons_1 = epsilons; _i < epsilons_1.length; _i++) {
-                    var epsilonFactor = epsilons_1[_i];
-                    var epsilon = epsilonFactor * perimeter;
-                    var approx = new cv.Mat();
-                    cv.approxPolyDP(contour, approx, epsilon, true);
-                    // Check if it's a quadrilateral
-                    if (approx.rows === 4) {
-                        // Convert to corner points
-                        var corners = [];
-                        for (var j = 0; j < 4; j++) {
-                            corners.push({
-                                x: approx.data32S[j * 2],
-                                y: approx.data32S[j * 2 + 1]
-                            });
-                        }
-                        // Calculate score based on multiple factors
-                        var isConvex = cv.isContourConvex(approx);
-                        if (!isConvex) {
-                            approx.delete();
-                            continue;
-                        }
-                        // Calculate aspect ratio score
-                        var maxX = Math.max.apply(Math, corners.map(function (c) { return c.x; }));
-                        var minX = Math.min.apply(Math, corners.map(function (c) { return c.x; }));
-                        var maxY = Math.max.apply(Math, corners.map(function (c) { return c.y; }));
-                        var minY = Math.min.apply(Math, corners.map(function (c) { return c.y; }));
-                        var aspectRatio = (maxX - minX) / (maxY - minY);
-                        // Common document aspect ratios (A4, letter, etc.) are between 0.5 and 2.0
-                        var aspectScore = (aspectRatio > 0.5 && aspectRatio < 2.0) ? 1.0 : 0.5;
-                        // Calculate distance from center
-                        var centerX = width / 2;
-                        var centerY = height / 2;
-                        var cornersCenterX = corners.reduce(function (sum, c) { return sum + c.x; }, 0) / 4;
-                        var cornersCenterY = corners.reduce(function (sum, c) { return sum + c.y; }, 0) / 4;
-                        // Normalized distance (0-1) from center of frame
-                        var distanceFromCenter = Math.sqrt(Math.pow((cornersCenterX - centerX) / width, 2) +
-                            Math.pow((cornersCenterY - centerY) / height, 2));
-                        // Prefer contours near center
-                        var centerScore = 1.0 - Math.min(distanceFromCenter, 0.5) * 2;
-                        // Combined score with area weight
-                        var totalScore = (aspectScore * 0.3 +
-                            centerScore * 0.3 +
-                            (area / (width * height)) * 0.4) * area; // Weight by area to prefer larger contours
-                        if (totalScore > maxScore) {
-                            maxScore = totalScore;
-                            // Sort corners: top-left, top-right, bottom-right, bottom-left
-                            corners.sort(function (a, b) { return a.y - b.y; }); // Sort by y first
-                            // Get top and bottom pairs
-                            var topTwo = corners.slice(0, 2);
-                            var bottomTwo = corners.slice(2, 4);
-                            // Sort top pair by x
-                            topTwo.sort(function (a, b) { return a.x - b.x; });
-                            // Sort bottom pair by x
-                            bottomTwo.sort(function (a, b) { return a.x - b.x; });
-                            bestCorners = [topTwo[0], topTwo[1], bottomTwo[1], bottomTwo[0]];
-                        }
+            try {
+                // Pre-process the image
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+                // Adaptive threshold parameters based on image size
+                var cannyThresholdLow = Math.min(30, width * height / 80000);
+                var cannyThresholdHigh = Math.min(200, width * height / 12000);
+                cv.Canny(gray, edges, cannyThresholdLow, cannyThresholdHigh);
+                // Find contours
+                cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+                var bestCorners = null;
+                var maxScore = 0;
+                var minArea = width * height * 0.05;
+                // Process largest contours first
+                var contourInfo = [];
+                for (var i = 0; i < contours.size(); i++) {
+                    var contour = contours.get(i);
+                    var area = cv.contourArea(contour);
+                    if (area > minArea) {
+                        contourInfo.push({ index: i, area: area });
                     }
-                    approx.delete();
                 }
+                // Sort by area, largest first
+                contourInfo.sort(function (a, b) { return b.area - a.area; });
+                // Only check top contours
+                var contoursToCheck = Math.min(8, contourInfo.length);
+                for (var i = 0; i < contoursToCheck; i++) {
+                    var _a = contourInfo[i], index = _a.index, area = _a.area;
+                    var contour = contours.get(index);
+                    var perimeter = cv.arcLength(contour, true);
+                    // Adjust epsilon factors based on screen orientation
+                    var epsilons = orientationRef.current === "portrait"
+                        ? [0.02, 0.03, 0.04]
+                        : [0.03, 0.04, 0.05]; // Slightly larger epsilon for landscape
+                    for (var _i = 0, epsilons_1 = epsilons; _i < epsilons_1.length; _i++) {
+                        var epsilonFactor = epsilons_1[_i];
+                        var epsilon = epsilonFactor * perimeter;
+                        var approx = new cv.Mat();
+                        cv.approxPolyDP(contour, approx, epsilon, true);
+                        // Check if it's a quadrilateral
+                        if (approx.rows === 4) {
+                            // Convert to corner points
+                            var corners = [];
+                            for (var j = 0; j < 4; j++) {
+                                corners.push({
+                                    x: approx.data32S[j * 2],
+                                    y: approx.data32S[j * 2 + 1]
+                                });
+                            }
+                            // Calculate score based on multiple factors
+                            var isConvex = cv.isContourConvex(approx);
+                            if (!isConvex) {
+                                approx.delete();
+                                continue;
+                            }
+                            // Calculate aspect ratio score
+                            var maxX = Math.max.apply(Math, corners.map(function (c) { return c.x; }));
+                            var minX = Math.min.apply(Math, corners.map(function (c) { return c.x; }));
+                            var maxY = Math.max.apply(Math, corners.map(function (c) { return c.y; }));
+                            var minY = Math.min.apply(Math, corners.map(function (c) { return c.y; }));
+                            var aspectRatio = (maxX - minX) / (maxY - minY);
+                            // Different aspect ratio ranges for portrait vs landscape
+                            var aspectScore = 1.0;
+                            if (orientationRef.current === "portrait") {
+                                // In portrait mode, prefer taller documents (0.5-1.3)
+                                aspectScore = (aspectRatio >= 0.5 && aspectRatio <= 1.3) ? 1.0 :
+                                    (aspectRatio > 1.3 && aspectRatio <= 2.0) ? 0.6 : 0.3;
+                            }
+                            else {
+                                // In landscape mode, prefer wider documents (0.8-2.0)
+                                aspectScore = (aspectRatio >= 0.8 && aspectRatio <= 2.0) ? 1.0 :
+                                    (aspectRatio >= 0.5 && aspectRatio < 0.8) ? 0.7 : 0.3;
+                            }
+                            // Calculate distance from center
+                            var centerX = width / 2;
+                            var centerY = height / 2;
+                            var cornersCenterX = corners.reduce(function (sum, c) { return sum + c.x; }, 0) / 4;
+                            var cornersCenterY = corners.reduce(function (sum, c) { return sum + c.y; }, 0) / 4;
+                            // Normalized distance (0-1) from center of frame
+                            var distanceFromCenter = Math.sqrt(Math.pow((cornersCenterX - centerX) / width, 2) +
+                                Math.pow((cornersCenterY - centerY) / height, 2));
+                            // Prefer contours near center
+                            var centerScore = 1.0 - Math.min(distanceFromCenter, 0.5) * 2;
+                            // Size score: prefer contours that use a significant portion of the view
+                            var sizeScore = Math.min(area / (width * height * 0.9), 1.0);
+                            // Combined score
+                            var totalScore = (aspectScore * 0.3 +
+                                centerScore * 0.3 +
+                                sizeScore * 0.4) * area; // Weight by area to prefer larger contours
+                            if (totalScore > maxScore) {
+                                maxScore = totalScore;
+                                // Sort corners: top-left, top-right, bottom-right, bottom-left
+                                corners.sort(function (a, b) { return a.y - b.y; }); // Sort by y first
+                                // Get top and bottom pairs
+                                var topTwo = corners.slice(0, 2);
+                                var bottomTwo = corners.slice(2, 4);
+                                // Sort top pair by x
+                                topTwo.sort(function (a, b) { return a.x - b.x; });
+                                // Sort bottom pair by x
+                                bottomTwo.sort(function (a, b) { return a.x - b.x; });
+                                bestCorners = [topTwo[0], topTwo[1], bottomTwo[1], bottomTwo[0]];
+                            }
+                        }
+                        approx.delete();
+                    }
+                }
+                // Update corner cache
+                if (bestCorners) {
+                    cornerCacheRef.current = bestCorners;
+                }
+                else if (lastProcessTimeRef.current % 10 === 0) {
+                    // Every 10th frame, if no corners found, clear cache to avoid stale corners
+                    cornerCacheRef.current = null;
+                }
+                return bestCorners;
             }
-            // Clean up
-            gray.delete();
-            edges.delete();
-            contours.delete();
-            hierarchy.delete();
-            // Update corner cache
-            if (bestCorners) {
-                cornerCacheRef.current = bestCorners;
+            finally {
+                // Ensure cleanup happens even if processing fails
+                gray.delete();
+                edges.delete();
+                contours.delete();
+                hierarchy.delete();
             }
-            return bestCorners;
         }
         catch (err) {
             console.error("Document detection error:", err);
             return cornerCacheRef.current; // Return last good corners if there's an error
         }
     }, []);
-    // Process video frames - improved stability
+    // Process video frames with improved stability and reliability
     var processFrame = react.useCallback(function () {
         if (!videoRef.current || !edgeCanvasRef.current || !cvRef.current || !isCameraReady || !isOpenCVReady) {
             if (isEdgeDetectionActive) {
@@ -380,10 +487,11 @@ var VisionScanner = function (_a) {
             }
             return;
         }
-        // Throttle processing - 50ms (20fps) for better stability with less flicker
+        // Throttle processing - dynamic rate based on device capability
         var now = performance.now();
         var timeSinceLastProcess = now - lastProcessTimeRef.current;
-        if (timeSinceLastProcess < 50) {
+        // Aim for maximum 15fps on all devices to balance performance and battery
+        if (timeSinceLastProcess < 66) { // ~15fps
             animationFrameRef.current = requestAnimationFrame(processFrame);
             return;
         }
@@ -401,13 +509,22 @@ var VisionScanner = function (_a) {
             // Set canvas size to match video
             var width = video.videoWidth;
             var height = video.videoHeight;
+            if (!width || !height) {
+                // Skip this frame if video dimensions aren't available
+                processingRef.current = false;
+                animationFrameRef.current = requestAnimationFrame(processFrame);
+                return;
+            }
             if (edgeCanvas.width !== width || edgeCanvas.height !== height) {
                 edgeCanvas.width = width;
                 edgeCanvas.height = height;
             }
             var ctx_1 = edgeCanvas.getContext('2d');
-            if (!ctx_1)
+            if (!ctx_1) {
+                processingRef.current = false;
+                animationFrameRef.current = requestAnimationFrame(processFrame);
                 return;
+            }
             // Clear previous drawings
             ctx_1.clearRect(0, 0, width, height);
             // Draw current frame to canvas
@@ -487,17 +604,23 @@ var VisionScanner = function (_a) {
     };
     // Initialize camera
     react.useEffect(function () {
+        var _a;
         if (typeof window !== 'undefined') {
+            // Check if browser supports getUserMedia
+            if (!((_a = navigator.mediaDevices) === null || _a === void 0 ? void 0 : _a.getUserMedia)) {
+                handleError("Camera access not supported in this browser");
+                return;
+            }
             initCamera();
         }
         return function () {
             stopStreamInternal();
         };
-    }, [currentFacingMode, initCamera, stopStreamInternal]);
+    }, [currentFacingMode, initCamera, stopStreamInternal, handleError]);
     // Handle edge detection toggle
     react.useEffect(function () {
         if (isEdgeDetectionActive) {
-            if (!animationFrameRef.current && isOpenCVReady) {
+            if (!animationFrameRef.current && isOpenCVReady && isCameraReady) {
                 animationFrameRef.current = requestAnimationFrame(processFrame);
             }
         }
@@ -523,23 +646,45 @@ var VisionScanner = function (_a) {
                 animationFrameRef.current = null;
             }
         };
-    }, [isEdgeDetectionActive, isOpenCVReady, processFrame]);
+    }, [isEdgeDetectionActive, isOpenCVReady, isCameraReady, processFrame]);
+    // Handle visibility changes to save battery
+    react.useEffect(function () {
+        var handleVisibilityChange = function () {
+            if (document.hidden) {
+                // Page is hidden, pause processing
+                if (animationFrameRef.current) {
+                    cancelAnimationFrame(animationFrameRef.current);
+                    animationFrameRef.current = null;
+                }
+            }
+            else if (isEdgeDetectionActive && isOpenCVReady && isCameraReady) {
+                // Page is visible again, resume processing
+                if (!animationFrameRef.current) {
+                    animationFrameRef.current = requestAnimationFrame(processFrame);
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return function () {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isEdgeDetectionActive, isOpenCVReady, isCameraReady, processFrame]);
     // Set up adjustment canvas when entering adjustment mode
     react.useEffect(function () {
         if (isAdjustmentMode && capturedImage && adjustedCorners && adjustmentCanvasRef.current) {
-            var canvas_1 = adjustmentCanvasRef.current;
+            var canvas_2 = adjustmentCanvasRef.current;
             var img_1 = new Image();
             img_1.onload = function () {
                 // Store the image in ref to avoid re-renders
                 capturedImageRef.current = img_1;
                 // Set canvas dimensions to match image
-                canvas_1.width = img_1.width;
-                canvas_1.height = img_1.height;
+                canvas_2.width = img_1.width;
+                canvas_2.height = img_1.height;
                 // Draw initial image and overlay
-                var ctx = canvas_1.getContext('2d');
+                var ctx = canvas_2.getContext('2d');
                 if (ctx) {
                     // Clear canvas
-                    ctx.clearRect(0, 0, canvas_1.width, canvas_1.height);
+                    ctx.clearRect(0, 0, canvas_2.width, canvas_2.height);
                     // Draw image
                     ctx.drawImage(img_1, 0, 0);
                     // Draw overlay with corners
@@ -548,9 +693,13 @@ var VisionScanner = function (_a) {
                     setImageLoaded(true);
                 }
             };
+            img_1.onerror = function () {
+                handleError("Failed to load captured image for adjustment");
+                resetAdjustmentMode();
+            };
             img_1.src = capturedImage;
         }
-    }, [isAdjustmentMode, capturedImage, adjustedCorners]);
+    }, [isAdjustmentMode, capturedImage, adjustedCorners, handleError]);
     // Draw adjustment overlay
     var drawAdjustmentOverlay = react.useCallback(function (ctx, corners) {
         if (!ctx || !corners || corners.length !== 4)
@@ -665,15 +814,21 @@ var VisionScanner = function (_a) {
             track
                 .applyConstraints({ advanced: [{ torch: newTorchState_1 }] })
                 .then(function () { return setTorchOn(newTorchState_1); })
-                .catch(function (err) { return onError === null || onError === void 0 ? void 0 : onError("Torch toggle failed: ".concat(err.message)); });
+                .catch(function (err) { return handleError("Torch toggle failed: ".concat(err.message)); });
         }
-    }, [hasTorch, onError, torchOn]);
+    }, [hasTorch, handleError, torchOn]);
     var toggleEdgeDetection = react.useCallback(function () {
         setIsEdgeDetectionActive(function (prev) { return !prev; });
     }, []);
     var toggleViewMode = react.useCallback(function () {
         setIsEmbedded(function (prev) { return !prev; });
     }, []);
+    // Retry camera access after permission denial
+    var retryCamera = react.useCallback(function () {
+        setPermissionDenied(false);
+        setErrorMessage(null);
+        initCamera();
+    }, [initCamera]);
     // Save adjusted document
     var confirmAdjustedDocument = react.useCallback(function () {
         if (!capturedImage || !adjustedCorners || !cvRef.current || !adjustmentCanvasRef.current)
@@ -730,9 +885,10 @@ var VisionScanner = function (_a) {
         }
         catch (err) {
             console.error("Error processing adjusted document:", err);
+            handleError("Failed to process the document. Please try again.");
             resetAdjustmentMode();
         }
-    }, [capturedImage, adjustedCorners, onCapture]);
+    }, [capturedImage, adjustedCorners, onCapture, handleError]);
     // Cancel adjustment and return to camera
     var cancelAdjustment = react.useCallback(function () {
         resetAdjustmentMode();
@@ -745,10 +901,10 @@ var VisionScanner = function (_a) {
         setImageLoaded(false);
         capturedImageRef.current = null;
         // Resume video processing
-        if (isEdgeDetectionActive && isOpenCVReady) {
+        if (isEdgeDetectionActive && isOpenCVReady && isCameraReady) {
             animationFrameRef.current = requestAnimationFrame(processFrame);
         }
-    }, [isEdgeDetectionActive, isOpenCVReady, processFrame]);
+    }, [isEdgeDetectionActive, isOpenCVReady, isCameraReady, processFrame]);
     // Capture image
     var capture = react.useCallback(function () {
         if (!isCameraReady || !videoRef.current || !canvasRef.current)
@@ -788,9 +944,9 @@ var VisionScanner = function (_a) {
             onCapture(imageData);
         }
     }, [isCameraReady, documentCorners, startAdjustment, onCapture]);
-    return (jsxRuntime.jsx("div", { ref: containerRef, className: "vision-scanner ".concat(isEmbedded ? 'embedded' : 'expanded'), children: !isAdjustmentMode ? (jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [jsxRuntime.jsx("video", { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "vision-scanner-video" }), jsxRuntime.jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas", style: { display: 'none' } }), jsxRuntime.jsx("canvas", { ref: edgeCanvasRef, className: "vision-scanner-edge-canvas" }), isLoading && (jsxRuntime.jsxs("div", { className: "vision-scanner-loading", children: [jsxRuntime.jsx("div", { className: "loading-spinner" }), jsxRuntime.jsx("div", { className: "loading-text", children: "Initializing camera..." })] })), isCameraReady && isOpenCVReady && isEdgeDetectionActive && !documentCorners && (jsxRuntime.jsxs("div", { className: "document-guide-overlay", children: [jsxRuntime.jsxs("div", { className: "document-guide-corners", children: [jsxRuntime.jsx("div", { className: "corner top-left" }), jsxRuntime.jsx("div", { className: "corner top-right" }), jsxRuntime.jsx("div", { className: "corner bottom-right" }), jsxRuntime.jsx("div", { className: "corner bottom-left" })] }), jsxRuntime.jsx("div", { className: "guide-text", children: "Position document within frame" })] })), jsxRuntime.jsxs("div", { className: "vision-scanner-controls", children: [jsxRuntime.jsx("button", { onClick: capture, className: "vision-scanner-capture-button ".concat(documentCorners ? 'document-ready' : ''), disabled: !isCameraReady, "aria-label": "Capture", children: jsxRuntime.jsx("span", { className: "vision-scanner-capture-button-inner" }) }), jsxRuntime.jsxs("div", { className: "vision-scanner-secondary-controls", children: [jsxRuntime.jsx("button", { onClick: toggleViewMode, className: "vision-scanner-icon-button ".concat(!isEmbedded ? 'active-button' : ''), "aria-label": isEmbedded ? "Expand Camera" : "Minimize Camera", children: isEmbedded ? (jsxRuntime.jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsxRuntime.jsx("path", { d: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" }) })) : (jsxRuntime.jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsxRuntime.jsx("path", { d: "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" }) })) }), cameraCount > 1 && (jsxRuntime.jsx("button", { onClick: switchCamera, className: "vision-scanner-icon-button", "aria-label": "Switch Camera", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("path", { d: "M20 16v4a2 2 0 0 1-2 2h-4" }), jsxRuntime.jsx("path", { d: "M14 14l6 6" }), jsxRuntime.jsx("path", { d: "M4 8V4a2 2 0 0 1 2-2h4" }), jsxRuntime.jsx("path", { d: "M10 10L4 4" })] }) })), hasTorch && (jsxRuntime.jsx("button", { onClick: toggleTorch, className: "vision-scanner-icon-button ".concat(torchOn ? 'active-button' : ''), "aria-label": torchOn ? "Turn Off Light" : "Turn On Light", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("circle", { cx: "12", cy: "12", r: "5" }), jsxRuntime.jsx("line", { x1: "12", y1: "1", x2: "12", y2: "3" }), jsxRuntime.jsx("line", { x1: "12", y1: "21", x2: "12", y2: "23" }), jsxRuntime.jsx("line", { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" }), jsxRuntime.jsx("line", { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" }), jsxRuntime.jsx("line", { x1: "1", y1: "12", x2: "3", y2: "12" }), jsxRuntime.jsx("line", { x1: "21", y1: "12", x2: "23", y2: "12" }), jsxRuntime.jsx("line", { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" }), jsxRuntime.jsx("line", { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" })] }) })), jsxRuntime.jsx("button", { onClick: toggleEdgeDetection, disabled: !isCameraReady || !isOpenCVReady, className: "vision-scanner-icon-button ".concat(isEdgeDetectionActive ? 'active-button' : ''), "aria-label": isEdgeDetectionActive ? "Hide Document Detection" : "Show Document Detection", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }), jsxRuntime.jsx("line", { x1: "3", y1: "9", x2: "21", y2: "9" }), jsxRuntime.jsx("line", { x1: "9", y1: "21", x2: "9", y2: "9" })] }) })] })] }), !isOpenCVReady && isCameraReady && (jsxRuntime.jsx("div", { className: "vision-scanner-status", children: jsxRuntime.jsx("div", { className: "status-message", children: "Loading vision features..." }) })), documentCorners && (jsxRuntime.jsx("div", { className: "vision-scanner-document-indicator", children: jsxRuntime.jsx("div", { className: "document-ready-message", children: "Document detected" }) }))] })) : (
-        /* Adjustment Mode */
-        jsxRuntime.jsxs("div", { className: "vision-scanner-adjustment-mode", children: [jsxRuntime.jsxs("div", { className: "adjustment-canvas-container", children: [jsxRuntime.jsx("canvas", { ref: adjustmentCanvasRef, className: "vision-scanner-adjustment-canvas", onPointerDown: handlePointerDown, onPointerMove: handlePointerMove, onPointerUp: handlePointerUp, onPointerCancel: handlePointerUp }), !imageLoaded && (jsxRuntime.jsxs("div", { className: "loading-overlay", children: [jsxRuntime.jsx("div", { className: "loading-spinner" }), jsxRuntime.jsx("div", { className: "loading-text", children: "Preparing image..." })] }))] }), jsxRuntime.jsx("div", { className: "adjustment-instructions", children: jsxRuntime.jsx("div", { className: "instruction-text", children: "Drag corners to adjust document edges" }) }), jsxRuntime.jsxs("div", { className: "adjustment-controls", children: [jsxRuntime.jsx("button", { onClick: cancelAdjustment, className: "adjustment-button cancel-button", children: "Cancel" }), jsxRuntime.jsx("button", { onClick: confirmAdjustedDocument, className: "adjustment-button confirm-button", disabled: !imageLoaded, children: "Save" })] })] })) }));
+    return (jsxRuntime.jsx("div", { ref: containerRef, className: "vision-scanner ".concat(isEmbedded ? 'embedded' : 'expanded'), children: permissionDenied ? (jsxRuntime.jsx("div", { className: "vision-scanner-permission-denied", children: jsxRuntime.jsxs("div", { className: "permission-message", children: [jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "48", height: "48", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [jsxRuntime.jsx("circle", { cx: "12", cy: "12", r: "10" }), jsxRuntime.jsx("line", { x1: "12", y1: "8", x2: "12", y2: "12" }), jsxRuntime.jsx("line", { x1: "12", y1: "16", x2: "12", y2: "16" })] }), jsxRuntime.jsx("h3", { children: "Camera Access Denied" }), jsxRuntime.jsx("p", { children: "Please allow camera access in your browser settings to use the document scanner." }), jsxRuntime.jsx("button", { onClick: retryCamera, className: "retry-button", children: "Retry Camera Access" })] }) })) : (jsxRuntime.jsx(jsxRuntime.Fragment, { children: !isAdjustmentMode ? (jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [jsxRuntime.jsx("video", { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "vision-scanner-video" }), jsxRuntime.jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas", style: { display: 'none' } }), jsxRuntime.jsx("canvas", { ref: edgeCanvasRef, className: "vision-scanner-edge-canvas" }), isLoading && (jsxRuntime.jsxs("div", { className: "vision-scanner-loading", children: [jsxRuntime.jsx("div", { className: "loading-spinner" }), jsxRuntime.jsx("div", { className: "loading-text", children: "Initializing camera..." })] })), errorMessage && !isLoading && !permissionDenied && (jsxRuntime.jsx("div", { className: "vision-scanner-error", children: jsxRuntime.jsxs("div", { className: "error-message", children: [jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [jsxRuntime.jsx("circle", { cx: "12", cy: "12", r: "10" }), jsxRuntime.jsx("line", { x1: "12", y1: "8", x2: "12", y2: "12" }), jsxRuntime.jsx("line", { x1: "12", y1: "16", x2: "12", y2: "16" })] }), errorMessage] }) })), isCameraReady && isOpenCVReady && isEdgeDetectionActive && !documentCorners && (jsxRuntime.jsxs("div", { className: "document-guide-overlay", children: [jsxRuntime.jsxs("div", { className: "document-guide-corners", children: [jsxRuntime.jsx("div", { className: "corner top-left" }), jsxRuntime.jsx("div", { className: "corner top-right" }), jsxRuntime.jsx("div", { className: "corner bottom-right" }), jsxRuntime.jsx("div", { className: "corner bottom-left" })] }), jsxRuntime.jsx("div", { className: "guide-text", children: "Position document within frame" })] })), jsxRuntime.jsxs("div", { className: "vision-scanner-controls", children: [jsxRuntime.jsx("button", { onClick: capture, className: "vision-scanner-capture-button ".concat(documentCorners ? 'document-ready' : ''), disabled: !isCameraReady, "aria-label": "Capture", children: jsxRuntime.jsx("span", { className: "vision-scanner-capture-button-inner" }) }), jsxRuntime.jsxs("div", { className: "vision-scanner-secondary-controls", children: [jsxRuntime.jsx("button", { onClick: toggleViewMode, className: "vision-scanner-icon-button ".concat(!isEmbedded ? 'active-button' : ''), "aria-label": isEmbedded ? "Expand Camera" : "Minimize Camera", children: isEmbedded ? (jsxRuntime.jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsxRuntime.jsx("path", { d: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" }) })) : (jsxRuntime.jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsxRuntime.jsx("path", { d: "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" }) })) }), cameraCount > 1 && (jsxRuntime.jsx("button", { onClick: switchCamera, className: "vision-scanner-icon-button", "aria-label": "Switch Camera", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("path", { d: "M20 16v4a2 2 0 0 1-2 2h-4" }), jsxRuntime.jsx("path", { d: "M14 14l6 6" }), jsxRuntime.jsx("path", { d: "M4 8V4a2 2 0 0 1 2-2h4" }), jsxRuntime.jsx("path", { d: "M10 10L4 4" })] }) })), hasTorch && (jsxRuntime.jsx("button", { onClick: toggleTorch, className: "vision-scanner-icon-button ".concat(torchOn ? 'active-button' : ''), "aria-label": torchOn ? "Turn Off Light" : "Turn On Light", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("circle", { cx: "12", cy: "12", r: "5" }), jsxRuntime.jsx("line", { x1: "12", y1: "1", x2: "12", y2: "3" }), jsxRuntime.jsx("line", { x1: "12", y1: "21", x2: "12", y2: "23" }), jsxRuntime.jsx("line", { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" }), jsxRuntime.jsx("line", { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" }), jsxRuntime.jsx("line", { x1: "1", y1: "12", x2: "3", y2: "12" }), jsxRuntime.jsx("line", { x1: "21", y1: "12", x2: "23", y2: "12" }), jsxRuntime.jsx("line", { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" }), jsxRuntime.jsx("line", { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" })] }) })), jsxRuntime.jsx("button", { onClick: toggleEdgeDetection, disabled: !isCameraReady || !isOpenCVReady, className: "vision-scanner-icon-button ".concat(isEdgeDetectionActive ? 'active-button' : ''), "aria-label": isEdgeDetectionActive ? "Hide Document Detection" : "Show Document Detection", children: jsxRuntime.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsxRuntime.jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }), jsxRuntime.jsx("line", { x1: "3", y1: "9", x2: "21", y2: "9" }), jsxRuntime.jsx("line", { x1: "9", y1: "21", x2: "9", y2: "9" })] }) })] })] }), !isOpenCVReady && isCameraReady && (jsxRuntime.jsx("div", { className: "vision-scanner-status", children: jsxRuntime.jsx("div", { className: "status-message", children: "Loading vision features..." }) })), documentCorners && (jsxRuntime.jsx("div", { className: "vision-scanner-document-indicator", children: jsxRuntime.jsx("div", { className: "document-ready-message", children: "Document detected" }) }))] })) : (
+            /* Adjustment Mode */
+            jsxRuntime.jsxs("div", { className: "vision-scanner-adjustment-mode", children: [jsxRuntime.jsxs("div", { className: "adjustment-canvas-container", children: [jsxRuntime.jsx("canvas", { ref: adjustmentCanvasRef, className: "vision-scanner-adjustment-canvas", onPointerDown: handlePointerDown, onPointerMove: handlePointerMove, onPointerUp: handlePointerUp, onPointerCancel: handlePointerUp }), !imageLoaded && (jsxRuntime.jsxs("div", { className: "loading-overlay", children: [jsxRuntime.jsx("div", { className: "loading-spinner" }), jsxRuntime.jsx("div", { className: "loading-text", children: "Preparing image..." })] }))] }), jsxRuntime.jsx("div", { className: "adjustment-instructions", children: jsxRuntime.jsx("div", { className: "instruction-text", children: "Drag corners to adjust document edges" }) }), jsxRuntime.jsxs("div", { className: "adjustment-controls", children: [jsxRuntime.jsx("button", { onClick: cancelAdjustment, className: "adjustment-button cancel-button", children: "Cancel" }), jsxRuntime.jsx("button", { onClick: confirmAdjustedDocument, className: "adjustment-button confirm-button", disabled: !imageLoaded, children: "Save" })] })] })) })) }));
 };
 
 exports.VisionScanner = VisionScanner;
