@@ -132,20 +132,31 @@ var VisionScanner = function (_a) {
     useEffect(function () {
         var handleOrientationChange = function () {
             var isPortrait = window.innerHeight > window.innerWidth;
+            var prevOrientation = orientationRef.current;
             orientationRef.current = isPortrait ? "portrait" : "landscape";
-            // Reset corner cache on orientation change to force recalculation
-            cornerCacheRef.current = null;
-            // If camera is ready, we need to adjust canvas dimensions
-            if (videoRef.current && edgeCanvasRef.current && isCameraReady) {
-                var video_1 = videoRef.current;
-                var canvas_1 = edgeCanvasRef.current;
-                // Ensure canvas matches video dimensions after orientation change
-                setTimeout(function () {
-                    if (video_1 && canvas_1) {
-                        canvas_1.width = video_1.videoWidth;
-                        canvas_1.height = video_1.videoHeight;
-                    }
-                }, 300); // Short delay to allow video dimensions to update
+            // Only reset corner cache on actual orientation changes
+            if (prevOrientation !== orientationRef.current) {
+                cornerCacheRef.current = null;
+                // If camera is ready, we need to adjust canvas dimensions with a small delay
+                // to allow browser layout to complete
+                if (videoRef.current && edgeCanvasRef.current && isCameraReady) {
+                    setTimeout(function () {
+                        if (videoRef.current && edgeCanvasRef.current) {
+                            // Set canvas dimensions to match video's natural dimensions
+                            var video = videoRef.current;
+                            var canvas = edgeCanvasRef.current;
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            // Force a new frame to be processed to update UI
+                            if (isEdgeDetectionActive && !processingRef.current) {
+                                if (animationFrameRef.current) {
+                                    cancelAnimationFrame(animationFrameRef.current);
+                                }
+                                animationFrameRef.current = requestAnimationFrame(processFrame);
+                            }
+                        }
+                    }, 300); // Short delay to allow video dimensions to update
+                }
             }
         };
         window.addEventListener('resize', handleOrientationChange);
@@ -154,7 +165,7 @@ var VisionScanner = function (_a) {
         return function () {
             window.removeEventListener('resize', handleOrientationChange);
         };
-    }, [isCameraReady]);
+    }, [isCameraReady, isEdgeDetectionActive]);
     // Monitor container dimensions with ResizeObserver
     useEffect(function () {
         if (typeof ResizeObserver === 'undefined' || !containerRef.current)
@@ -507,18 +518,19 @@ var VisionScanner = function (_a) {
         var video = videoRef.current;
         var edgeCanvas = edgeCanvasRef.current;
         try {
-            // Set canvas size to match video
-            var width = video.videoWidth;
-            var height = video.videoHeight;
-            if (!width || !height) {
+            // Set canvas size to match video dimensions exactly
+            var videoWidth = video.videoWidth;
+            var videoHeight = video.videoHeight;
+            if (!videoWidth || !videoHeight) {
                 // Skip this frame if video dimensions aren't available
                 processingRef.current = false;
                 animationFrameRef.current = requestAnimationFrame(processFrame);
                 return;
             }
-            if (edgeCanvas.width !== width || edgeCanvas.height !== height) {
-                edgeCanvas.width = width;
-                edgeCanvas.height = height;
+            // Important: Match canvas to video's natural dimensions to prevent squeezing
+            if (edgeCanvas.width !== videoWidth || edgeCanvas.height !== videoHeight) {
+                edgeCanvas.width = videoWidth;
+                edgeCanvas.height = videoHeight;
             }
             var ctx_1 = edgeCanvas.getContext('2d');
             if (!ctx_1) {
@@ -527,14 +539,14 @@ var VisionScanner = function (_a) {
                 return;
             }
             // Clear previous drawings
-            ctx_1.clearRect(0, 0, width, height);
-            // Draw current frame to canvas
-            ctx_1.drawImage(video, 0, 0, width, height);
+            ctx_1.clearRect(0, 0, videoWidth, videoHeight);
+            // Draw current frame to canvas with proper dimensions
+            ctx_1.drawImage(video, 0, 0, videoWidth, videoHeight);
             // Get the image data
-            var imageData = ctx_1.getImageData(0, 0, width, height);
+            var imageData = ctx_1.getImageData(0, 0, videoWidth, videoHeight);
             var src = cv.matFromImageData(imageData);
             // Detect document corners
-            var corners = detectDocumentCorners(src, cv, width, height);
+            var corners = detectDocumentCorners(src, cv, videoWidth, videoHeight);
             // If corners were found, draw overlay
             if (corners && corners.length === 4) {
                 // Draw semi-transparent yellow quad
@@ -679,19 +691,19 @@ var VisionScanner = function (_a) {
     // Set up adjustment canvas when entering adjustment mode
     useEffect(function () {
         if (isAdjustmentMode && capturedImage && adjustedCorners && adjustmentCanvasRef.current) {
-            var canvas_2 = adjustmentCanvasRef.current;
+            var canvas_1 = adjustmentCanvasRef.current;
             var img_1 = new Image();
             img_1.onload = function () {
                 // Store the image in ref to avoid re-renders
                 capturedImageRef.current = img_1;
                 // Set canvas dimensions to match image
-                canvas_2.width = img_1.width;
-                canvas_2.height = img_1.height;
+                canvas_1.width = img_1.width;
+                canvas_1.height = img_1.height;
                 // Draw initial image and overlay
-                var ctx = canvas_2.getContext('2d');
+                var ctx = canvas_1.getContext('2d');
                 if (ctx) {
                     // Clear canvas
-                    ctx.clearRect(0, 0, canvas_2.width, canvas_2.height);
+                    ctx.clearRect(0, 0, canvas_1.width, canvas_1.height);
                     // Draw image
                     ctx.drawImage(img_1, 0, 0);
                     // Draw overlay with corners
@@ -998,8 +1010,8 @@ var VisionScanner = function (_a) {
     return (jsx("div", { ref: containerRef, className: "vision-scanner ".concat(isEmbedded ? 'embedded' : 'expanded'), children: permissionDenied ? (jsx("div", { className: "vision-scanner-permission-denied", children: jsxs("div", { className: "permission-message", children: [jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "48", height: "48", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [jsx("circle", { cx: "12", cy: "12", r: "10" }), jsx("line", { x1: "12", y1: "8", x2: "12", y2: "12" }), jsx("line", { x1: "12", y1: "16", x2: "12", y2: "16" })] }), jsx("h3", { children: "Camera Access Denied" }), jsx("p", { children: "Please allow camera access in your browser settings to use the document scanner." }), jsx("button", { onClick: retryCamera, className: "retry-button", children: "Retry Camera Access" })] }) })) : (jsx(Fragment, { children: !isAdjustmentMode ? (jsxs(Fragment, { children: [jsx("video", { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "vision-scanner-video" }), jsx("canvas", { ref: canvasRef, className: "vision-scanner-canvas", style: { display: 'none' } }), jsx("canvas", { ref: edgeCanvasRef, className: "vision-scanner-edge-canvas" }), isLoading && (jsxs("div", { className: "vision-scanner-loading", children: [jsx("div", { className: "loading-spinner" }), jsx("div", { className: "loading-text", children: "Initializing camera..." })] })), errorMessage && !isLoading && !permissionDenied && (jsx("div", { className: "vision-scanner-error", children: jsxs("div", { className: "error-message", children: [jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [jsx("circle", { cx: "12", cy: "12", r: "10" }), jsx("line", { x1: "12", y1: "8", x2: "12", y2: "12" }), jsx("line", { x1: "12", y1: "16", x2: "12", y2: "16" })] }), errorMessage] }) })), isCameraReady && isOpenCVReady && isEdgeDetectionActive && !documentCorners && (jsxs("div", { className: "document-guide-overlay", children: [jsxs("div", { className: "document-guide-corners", children: [jsx("div", { className: "corner top-left" }), jsx("div", { className: "corner top-right" }), jsx("div", { className: "corner bottom-right" }), jsx("div", { className: "corner bottom-left" })] }), jsx("div", { className: "guide-text", children: "Position document within frame" })] })), jsxs("div", { className: "vision-scanner-controls", children: [jsx("button", { onClick: capture, className: "vision-scanner-capture-button ".concat(documentCorners ? 'document-ready' : ''), disabled: !isCameraReady, "aria-label": "Capture", children: jsx("span", { className: "vision-scanner-capture-button-inner" }) }), jsxs("div", { className: "vision-scanner-secondary-controls", children: [jsx("button", { onClick: toggleViewMode, className: "vision-scanner-icon-button ".concat(!isEmbedded ? 'active-button' : ''), "aria-label": isEmbedded ? "Expand Camera" : "Minimize Camera", children: isEmbedded ? (jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsx("path", { d: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" }) })) : (jsx("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: jsx("path", { d: "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" }) })) }), cameraCount > 1 && (jsx("button", { onClick: switchCamera, className: "vision-scanner-icon-button", "aria-label": "Switch Camera", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("path", { d: "M20 16v4a2 2 0 0 1-2 2h-4" }), jsx("path", { d: "M14 14l6 6" }), jsx("path", { d: "M4 8V4a2 2 0 0 1 2-2h4" }), jsx("path", { d: "M10 10L4 4" })] }) })), hasTorch && (jsx("button", { onClick: toggleTorch, className: "vision-scanner-icon-button ".concat(torchOn ? 'active-button' : ''), "aria-label": torchOn ? "Turn Off Light" : "Turn On Light", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("circle", { cx: "12", cy: "12", r: "5" }), jsx("line", { x1: "12", y1: "1", x2: "12", y2: "3" }), jsx("line", { x1: "12", y1: "21", x2: "12", y2: "23" }), jsx("line", { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" }), jsx("line", { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" }), jsx("line", { x1: "1", y1: "12", x2: "3", y2: "12" }), jsx("line", { x1: "21", y1: "12", x2: "23", y2: "12" }), jsx("line", { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" }), jsx("line", { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" })] }) })), jsx("button", { onClick: toggleEdgeDetection, disabled: !isCameraReady || !isOpenCVReady, className: "vision-scanner-icon-button ".concat(isEdgeDetectionActive ? 'active-button' : ''), "aria-label": isEdgeDetectionActive ? "Hide Document Detection" : "Show Document Detection", children: jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", width: "24", height: "24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }), jsx("line", { x1: "3", y1: "9", x2: "21", y2: "9" }), jsx("line", { x1: "9", y1: "21", x2: "9", y2: "9" })] }) })] })] }), !isOpenCVReady && isCameraReady && (jsx("div", { className: "vision-scanner-status", children: jsx("div", { className: "status-message", children: "Loading vision features..." }) })), documentCorners && (jsx("div", { className: "vision-scanner-document-indicator", children: jsx("div", { className: "document-ready-message", children: "Document detected" }) }))] })) : (
             /* Adjustment Mode */
             jsxs("div", { className: "vision-scanner-adjustment-mode", children: [jsxs("div", { className: "adjustment-canvas-container", children: [jsx("canvas", { ref: adjustmentCanvasRef, className: "vision-scanner-adjustment-canvas", onPointerDown: handlePointerDown, onPointerMove: handlePointerMove, onPointerUp: handlePointerUp, onPointerCancel: handlePointerUp }), !imageLoaded && (jsxs("div", { className: "loading-overlay", children: [jsx("div", { className: "loading-spinner" }), jsx("div", { className: "loading-text", children: "Preparing image..." })] })), showMagnifier && magnifierPosition && imageLoaded && capturedImageRef.current && (jsx("div", { className: "corner-magnifier", style: {
-                                    left: "".concat(Math.min(Math.max(magnifierPosition.x - 75, 20), ((_c = (_b = adjustmentCanvasRef.current) === null || _b === void 0 ? void 0 : _b.width) !== null && _c !== void 0 ? _c : 800) - 170), "px"),
-                                    top: "".concat(Math.min(Math.max(magnifierPosition.y - 75, 20), ((_e = (_d = adjustmentCanvasRef.current) === null || _d === void 0 ? void 0 : _d.height) !== null && _e !== void 0 ? _e : 600) - 170), "px")
+                                    left: "".concat(Math.min(Math.max(magnifierPosition.x - 30, 20), ((_c = (_b = adjustmentCanvasRef.current) === null || _b === void 0 ? void 0 : _b.width) !== null && _c !== void 0 ? _c : 800) - 130), "px"),
+                                    top: "".concat(Math.min(Math.max(magnifierPosition.y - 30, 20), ((_e = (_d = adjustmentCanvasRef.current) === null || _d === void 0 ? void 0 : _d.height) !== null && _e !== void 0 ? _e : 600) - 130), "px")
                                 }, children: jsx("div", { className: "magnifier-content", style: {
                                         backgroundImage: "url(".concat(capturedImage, ")"),
                                         backgroundPosition: "-".concat(magnifierPosition.x * 2 - 75, "px -").concat(magnifierPosition.y * 2 - 75, "px"),

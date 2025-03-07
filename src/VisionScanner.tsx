@@ -74,23 +74,35 @@ export const VisionScanner = ({
   useEffect(() => {
     const handleOrientationChange = () => {
       const isPortrait = window.innerHeight > window.innerWidth;
+      const prevOrientation = orientationRef.current;
       orientationRef.current = isPortrait ? "portrait" : "landscape";
       
-      // Reset corner cache on orientation change to force recalculation
-      cornerCacheRef.current = null;
-      
-      // If camera is ready, we need to adjust canvas dimensions
-      if (videoRef.current && edgeCanvasRef.current && isCameraReady) {
-        const video = videoRef.current;
-        const canvas = edgeCanvasRef.current;
+      // Only reset corner cache on actual orientation changes
+      if (prevOrientation !== orientationRef.current) {
+        cornerCacheRef.current = null;
         
-        // Ensure canvas matches video dimensions after orientation change
-        setTimeout(() => {
-          if (video && canvas) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          }
-        }, 300); // Short delay to allow video dimensions to update
+        // If camera is ready, we need to adjust canvas dimensions with a small delay
+        // to allow browser layout to complete
+        if (videoRef.current && edgeCanvasRef.current && isCameraReady) {
+          setTimeout(() => {
+            if (videoRef.current && edgeCanvasRef.current) {
+              // Set canvas dimensions to match video's natural dimensions
+              const video = videoRef.current;
+              const canvas = edgeCanvasRef.current;
+              
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              
+              // Force a new frame to be processed to update UI
+              if (isEdgeDetectionActive && !processingRef.current) {
+                if (animationFrameRef.current) {
+                  cancelAnimationFrame(animationFrameRef.current);
+                }
+                animationFrameRef.current = requestAnimationFrame(processFrame);
+              }
+            }
+          }, 300); // Short delay to allow video dimensions to update
+        }
       }
     };
     
@@ -101,7 +113,7 @@ export const VisionScanner = ({
     return () => {
       window.removeEventListener('resize', handleOrientationChange);
     };
-  }, [isCameraReady]);
+  }, [isCameraReady, isEdgeDetectionActive]);
 
   // Monitor container dimensions with ResizeObserver
   useEffect(() => {
@@ -476,20 +488,21 @@ export const VisionScanner = ({
     const edgeCanvas = edgeCanvasRef.current;
     
     try {
-      // Set canvas size to match video
-      const width = video.videoWidth;
-      const height = video.videoHeight;
+      // Set canvas size to match video dimensions exactly
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
       
-      if (!width || !height) {
+      if (!videoWidth || !videoHeight) {
         // Skip this frame if video dimensions aren't available
         processingRef.current = false;
         animationFrameRef.current = requestAnimationFrame(processFrame);
         return;
       }
       
-      if (edgeCanvas.width !== width || edgeCanvas.height !== height) {
-        edgeCanvas.width = width;
-        edgeCanvas.height = height;
+      // Important: Match canvas to video's natural dimensions to prevent squeezing
+      if (edgeCanvas.width !== videoWidth || edgeCanvas.height !== videoHeight) {
+        edgeCanvas.width = videoWidth;
+        edgeCanvas.height = videoHeight;
       }
       
       const ctx = edgeCanvas.getContext('2d');
@@ -500,17 +513,17 @@ export const VisionScanner = ({
       }
       
       // Clear previous drawings
-      ctx.clearRect(0, 0, width, height);
+      ctx.clearRect(0, 0, videoWidth, videoHeight);
       
-      // Draw current frame to canvas
-      ctx.drawImage(video, 0, 0, width, height);
+      // Draw current frame to canvas with proper dimensions
+      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
       
       // Get the image data
-      const imageData = ctx.getImageData(0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
       const src = cv.matFromImageData(imageData);
       
       // Detect document corners
-      const corners = detectDocumentCorners(src, cv, width, height);
+      const corners = detectDocumentCorners(src, cv, videoWidth, videoHeight);
       
       // If corners were found, draw overlay
       if (corners && corners.length === 4) {
@@ -867,18 +880,18 @@ export const VisionScanner = ({
     initCamera();
   }, [initCamera]);
 
-            useEffect(() => {
-            if (!isAdjustmentMode && videoRef.current && isCameraReady) {
-              // Make sure video is playing after exiting adjustment mode
-              if (videoRef.current.paused) {
-                videoRef.current.play().catch(err => {
-                  console.error("Failed to play video after adjustment mode change:", err);
-                  // If playing fails, reinitialize the camera
-                  initCamera();
-                });
-              }
-            }
-          }, [isAdjustmentMode, isCameraReady, initCamera]);
+  useEffect(() => {
+    if (!isAdjustmentMode && videoRef.current && isCameraReady) {
+      // Make sure video is playing after exiting adjustment mode
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(err => {
+          console.error("Failed to play video after adjustment mode change:", err);
+          // If playing fails, reinitialize the camera
+          initCamera();
+        });
+      }
+    }
+  }, [isAdjustmentMode, isCameraReady, initCamera]);
 
   // Save adjusted document - ensuring no yellow corners are included
   const confirmAdjustedDocument = useCallback(() => {
@@ -1232,13 +1245,13 @@ export const VisionScanner = ({
                   </div>
                 )}
                 
-                {/* Magnifier for corner adjustment */}
+                {/* Magnifier for corner adjustment - positioned closer to corner */}
                 {showMagnifier && magnifierPosition && imageLoaded && capturedImageRef.current && (
                   <div 
                     className="corner-magnifier"
                     style={{
-                      left: `${Math.min(Math.max(magnifierPosition.x - 75, 20), (adjustmentCanvasRef.current?.width ?? 800) - 170)}px`,
-                      top: `${Math.min(Math.max(magnifierPosition.y - 75, 20), (adjustmentCanvasRef.current?.height ?? 600) - 170)}px`
+                      left: `${Math.min(Math.max(magnifierPosition.x - 30, 20), (adjustmentCanvasRef.current?.width ?? 800) - 130)}px`,
+                      top: `${Math.min(Math.max(magnifierPosition.y - 30, 20), (adjustmentCanvasRef.current?.height ?? 600) - 130)}px`
                     }}
                   >
                     <div className="magnifier-content" style={{
