@@ -47,6 +47,8 @@ export const VisionScanner = ({
   const [adjustedCorners, setAdjustedCorners] = useState<{ x: number, y: number }[] | null>(null);
   const [activeCornerIndex, setActiveCornerIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [magnifierPosition, setMagnifierPosition] = useState<{ x: number, y: number } | null>(null);
+  const [showMagnifier, setShowMagnifier] = useState(false);
 
   // Error handling wrapper
   const handleError = useCallback((message: string) => {
@@ -601,7 +603,7 @@ export const VisionScanner = ({
     };
   }, [currentFacingMode, initCamera, stopStreamInternal, handleError]);
 
-  // Handle edge detection toggle
+  // Handle edge detection toggle - fixed to prevent video freeze
   useEffect(() => {
     if (isEdgeDetectionActive) {
       if (!animationFrameRef.current && isOpenCVReady && isCameraReady) {
@@ -624,6 +626,13 @@ export const VisionScanner = ({
         setDocumentCorners(null);
         cornerCacheRef.current = null;
       }
+    }
+    
+    // Ensure video continues playing even when edge detection is toggled
+    if (isCameraReady && videoRef.current && videoRef.current.paused) {
+      videoRef.current.play().catch(err => {
+        console.error("Failed to play video after toggle:", err);
+      });
     }
     
     return () => {
@@ -776,6 +785,13 @@ export const VisionScanner = ({
       setActiveCornerIndex(closestIndex);
       setIsDragging(true);
       
+      // Show magnifier
+      setShowMagnifier(true);
+      
+      // Set initial magnifier position
+      const corner = adjustedCorners[closestIndex];
+      setMagnifierPosition({ x: corner.x, y: corner.y });
+      
       // Capture pointer
       canvas.setPointerCapture(e.pointerId);
     }
@@ -796,6 +812,9 @@ export const VisionScanner = ({
     newCorners[activeCornerIndex] = { x, y };
     setAdjustedCorners(newCorners);
     
+    // Update magnifier position
+    setMagnifierPosition({ x, y });
+    
     // Redraw
     const ctx = canvas.getContext('2d');
     if (ctx && capturedImageRef.current) {
@@ -810,6 +829,7 @@ export const VisionScanner = ({
     
     setIsDragging(false);
     setActiveCornerIndex(null);
+    setShowMagnifier(false);
     
     // Release pointer
     adjustmentCanvasRef.current.releasePointerCapture(e.pointerId);
@@ -847,19 +867,40 @@ export const VisionScanner = ({
     initCamera();
   }, [initCamera]);
 
-  // Save adjusted document
+            useEffect(() => {
+            if (!isAdjustmentMode && videoRef.current && isCameraReady) {
+              // Make sure video is playing after exiting adjustment mode
+              if (videoRef.current.paused) {
+                videoRef.current.play().catch(err => {
+                  console.error("Failed to play video after adjustment mode change:", err);
+                  // If playing fails, reinitialize the camera
+                  initCamera();
+                });
+              }
+            }
+          }, [isAdjustmentMode, isCameraReady, initCamera]);
+
+  // Save adjusted document - ensuring no yellow corners are included
   const confirmAdjustedDocument = useCallback(() => {
-    if (!capturedImage || !adjustedCorners || !cvRef.current || !adjustmentCanvasRef.current) return;
+    if (!capturedImage || !adjustedCorners || !cvRef.current || !capturedImageRef.current) return;
     
     try {
       const cv = cvRef.current;
-      const canvas = adjustmentCanvasRef.current;
       
-      // Get image data
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      // Create a clean canvas to hold the original image without any overlays
+      const cleanCanvas = document.createElement('canvas');
+      const originalImg = capturedImageRef.current;
+      cleanCanvas.width = originalImg.width;
+      cleanCanvas.height = originalImg.height;
       
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Draw only the original image, no overlays
+      const cleanCtx = cleanCanvas.getContext('2d');
+      if (!cleanCtx) return;
+      
+      cleanCtx.drawImage(originalImg, 0, 0);
+      
+      // Get clean image data
+      const imgData = cleanCtx.getImageData(0, 0, cleanCanvas.width, cleanCanvas.height);
       const src = cv.matFromImageData(imgData);
       
       // Source points (adjusted corners)
@@ -881,8 +922,9 @@ export const VisionScanner = ({
         Math.hypot(adjustedCorners[2].x - adjustedCorners[1].x, adjustedCorners[2].y - adjustedCorners[1].y)
       );
       
-      const maxWidth = Math.ceil(width);
-      const maxHeight = Math.ceil(height);
+      // Ensure reasonable dimensions
+      const maxWidth = Math.min(Math.ceil(width), 3000);  // Limit max size
+      const maxHeight = Math.min(Math.ceil(height), 3000);
       
       // Destination points (rectangle)
       const dstPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -930,7 +972,7 @@ export const VisionScanner = ({
     resetAdjustmentMode();
   }, []);
 
-  // Reset adjustment mode state
+  // Reset adjustment mode state and ensure video resumes
   const resetAdjustmentMode = useCallback(() => {
     setIsAdjustmentMode(false);
     setCapturedImage(null);
@@ -938,11 +980,28 @@ export const VisionScanner = ({
     setImageLoaded(false);
     capturedImageRef.current = null;
     
-    // Resume video processing
-    if (isEdgeDetectionActive && isOpenCVReady && isCameraReady) {
-      animationFrameRef.current = requestAnimationFrame(processFrame);
+    // Ensure camera is properly reinitialized
+    if (videoRef.current && videoRef.current.srcObject && isCameraReady) {
+      // Make sure video is playing
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(err => {
+          console.error("Failed to restart video after adjustment:", err);
+          // If playback fails, try reinitializing the camera
+          initCamera();
+        });
+      }
+      
+      // Resume video processing if edge detection is active
+      if (isEdgeDetectionActive && isOpenCVReady) {
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(processFrame);
+        }
+      }
+    } else if (isCameraReady) {
+      // If video reference is broken, reinitialize the camera
+      initCamera();
     }
-  }, [isEdgeDetectionActive, isOpenCVReady, isCameraReady, processFrame]);
+  }, [isEdgeDetectionActive, isOpenCVReady, isCameraReady, processFrame, initCamera]);
 
   // Capture image
   const capture = useCallback(() => {
@@ -1170,6 +1229,25 @@ export const VisionScanner = ({
                   <div className="loading-overlay">
                     <div className="loading-spinner"></div>
                     <div className="loading-text">Preparing image...</div>
+                  </div>
+                )}
+                
+                {/* Magnifier for corner adjustment */}
+                {showMagnifier && magnifierPosition && imageLoaded && capturedImageRef.current && (
+                  <div 
+                    className="corner-magnifier"
+                    style={{
+                      left: `${Math.min(Math.max(magnifierPosition.x - 75, 20), (adjustmentCanvasRef.current?.width ?? 800) - 170)}px`,
+                      top: `${Math.min(Math.max(magnifierPosition.y - 75, 20), (adjustmentCanvasRef.current?.height ?? 600) - 170)}px`
+                    }}
+                  >
+                    <div className="magnifier-content" style={{
+                      backgroundImage: `url(${capturedImage})`,
+                      backgroundPosition: `-${magnifierPosition.x * 2 - 75}px -${magnifierPosition.y * 2 - 75}px`,
+                      backgroundSize: `${capturedImageRef.current.width * 2}px ${capturedImageRef.current.height * 2}px`
+                    }}>
+                      <div className="magnifier-crosshair"></div>
+                    </div>
                   </div>
                 )}
               </div>

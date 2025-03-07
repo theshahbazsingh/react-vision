@@ -6,10 +6,8 @@
     background-color: #000;
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    /* Remove fixed aspect ratio - key fix for squeezed content */
-    min-height: 300px;
-    height: 80vh;
-    max-height: 800px;
+    /* Use fixed aspect ratio for consistency */
+    aspect-ratio: 4/3;
     overflow: hidden;
     transition: all 0.3s ease;
 }
@@ -30,9 +28,9 @@
     width: 100%;
     max-width: 100%;
     height: 100vh;
-    max-height: 100vh;
     z-index: 9999;
     border-radius: 0;
+    aspect-ratio: unset; /* Remove aspect ratio in fullscreen */
 }
 
 .vision-scanner-video {
@@ -41,7 +39,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: cover; /* This ensures the video fills the container */
     /* Hardware acceleration to reduce flickering */
     transform: translateZ(0);
     backface-visibility: hidden;
@@ -460,9 +458,7 @@
 /* Better responsive handling for different screen sizes */
 @media (max-width: 480px) {
     .vision-scanner.embedded {
-        height: 90vh;
-        max-height: 600px;
-        min-height: 250px;
+        aspect-ratio: 3/4; /* Portrait orientation for mobile */
         max-width: 100%;
         margin: 0;
     }
@@ -535,11 +531,33 @@
     }
 }
 
+/* Landscape mode for mobile */
+@media (max-width: 900px) and (orientation: landscape) {
+    .vision-scanner.embedded {
+        aspect-ratio: 16/9; /* Landscape ratio */
+        max-width: 90%;
+    }
+    
+    .vision-scanner-controls {
+        bottom: 15px;
+    }
+    
+    .vision-scanner-secondary-controls {
+        position: absolute;
+        bottom: 65px;
+        gap: 15px;
+    }
+    
+    .vision-scanner-capture-button {
+        width: 65px;
+        height: 65px;
+    }
+}
+
 /* Adjust for very short screens */
 @media (max-height: 500px) {
     .vision-scanner.embedded {
-        min-height: 200px;
-        height: 70vh;
+        aspect-ratio: 16/9;
     }
     
     .vision-scanner-controls {
@@ -547,7 +565,7 @@
     }
     
     .vision-scanner-secondary-controls {
-        bottom: 100px;
+        bottom: 60px;
         gap: 16px;
     }
     
@@ -566,5 +584,75 @@
 @supports (-webkit-touch-callout: none) {
     .vision-scanner.expanded {
         height: -webkit-fill-available;
+    }
+}
+
+/* Magnifier for corner adjustment */
+.corner-magnifier {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    border-radius: 75px;
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(255, 204, 0, 0.8), 0 5px 15px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    pointer-events: none; /* Pass through to the canvas */
+    z-index: 40;
+    transform: translateZ(0); /* For smoother rendering */
+    opacity: 0.95;
+}
+
+.magnifier-content {
+    width: 150px;
+    height: 150px;
+    background-repeat: no-repeat;
+}
+
+.magnifier-crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.magnifier-crosshair::before,
+.magnifier-crosshair::after {
+    content: '';
+    position: absolute;
+    background-color: rgba(255, 69, 0, 0.8);
+}
+
+.magnifier-crosshair::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.magnifier-crosshair::after {
+    top: 0;
+    left: 50%;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+/* Add animation for magnifier appearance */
+.corner-magnifier {
+    animation: magnifier-appear 0.2s ease-out;
+}
+
+@keyframes magnifier-appear {
+    from {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 0.95;
     }
 }
